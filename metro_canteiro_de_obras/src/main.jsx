@@ -1,11 +1,17 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import Login from './Login.jsx'
+import TelaInicial from './TelaInicial.jsx'
 import './index.css'
-import Login from './Login'  // tela inicial será o Login
 
-const root = ReactDOM.createRoot(document.getElementById('root'))
-root.render(
+ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <Login />
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<Login />} />
+        <Route path="/inicio" element={<TelaInicial />} />
+      </Routes>
+    </BrowserRouter>
   </React.StrictMode>
 )
