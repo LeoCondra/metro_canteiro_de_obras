@@ -25,7 +25,7 @@ html, body, #root {
 .top-bar {
   background-color: #003da5;
   color: white;
-  padding: 1rem 2rem; /* padding da barra */
+  padding: 1rem 2rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -39,15 +39,24 @@ html, body, #root {
 }
 
 .status-icon {
-  font-size: 1.2rem;
+  font-size: 1.4rem;
 }
 
-.not-started { color: #bbb; }
-.in-progress { color: #ffd700; animation: spin 1s linear infinite; }
-.done { color: #32cd32; }
+/* Cores dos status */
+.status-icon.not-started {
+  color: red;
+}
+.status-icon.in-progress {
+  color: goldenrod;
+  animation: spin 2s linear infinite;
+}
+.status-icon.done {
+  color: green;
+}
 
 .status-text {
-  font-size: 0.95rem;
+  font-size: 1rem;
+  font-weight: 500;
 }
 
 .user-section {
@@ -65,12 +74,12 @@ html, body, #root {
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 2rem; /* padding externo */
+  padding: 2rem;
 }
 
 .content-inner {
   background: white;
-  padding: 2rem; /* padding interno */
+  padding: 2rem;
   border-radius: 12px;
   box-shadow: 0 4px 12px rgba(0,0,0,0.1);
   display: flex;
@@ -78,7 +87,7 @@ html, body, #root {
   align-items: center;
   gap: 1.5rem;
   width: 100%;
-  max-width: 420px;
+  max-width: 500px;
   text-align: center;
 }
 
@@ -128,6 +137,48 @@ html, body, #root {
 .file-icon {
   font-size: 1.2rem;
   color: #003da5;
+}
+
+.file-display span {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Botão de download BIM */
+.download-btn {
+  margin-top: 1.5rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.8rem 1.2rem;
+  background: #003da5;
+  color: #fff;
+  text-decoration: none;
+  font-weight: 600;
+  border-radius: 10px;
+  transition: background 0.3s ease;
+}
+
+.download-btn:hover {
+  background: #002b73;
+}
+
+/* Bloco de relatório */
+.report {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: #f0f4ff;
+  border: 1px solid #d0d7e6;
+  border-radius: 10px;
+  width: 100%;
+  text-align: left;
+  font-family: monospace;
+  font-size: 0.9rem;
+  color: #222;
+  max-height: 200px;
+  overflow-y: auto;
 }
 
 /* Animação do status em progresso */

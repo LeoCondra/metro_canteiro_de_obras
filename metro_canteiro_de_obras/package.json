@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.75.1",
+    "@tensorflow-models/mobilenet": "^2.1.1",
+    "@tensorflow/tfjs": "^4.22.0",
     "react": "^19.1.1",
     "react-dom": "^19.2.0",
     "react-icons": "^5.5.0",
@@ -25,6 +27,7 @@
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.22",
     "globals": "^16.4.0",
+    "supabase": "^2.51.0",
     "vite": "^7.1.7"
   }
 }
