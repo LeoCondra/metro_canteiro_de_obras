@@ -2,9 +2,10 @@ import os
 import sys
 import requests
 import json
-import subprocess
 import tempfile
 import shutil
+import pycolmap
+
 
 def baixar_imagem(url, pasta_destino):
     """Baixa a imagem do Supabase Storage"""
@@ -17,35 +18,29 @@ def baixar_imagem(url, pasta_destino):
     else:
         raise Exception(f"Erro ao baixar imagem: {r.status_code}")
 
+
 def rodar_colmap(imagem_path, pasta_saida):
-    """Executa análise simples no Colmap"""
-    banco_dados = os.path.join(pasta_saida, "database.db")
+    """Executa análise simples usando pycolmap"""
     imagens_dir = os.path.dirname(imagem_path)
+    rec = pycolmap.Reconstruction()
 
-    # 1. Extrair features
-    subprocess.run([
-        "colmap", "feature_extractor",
-        "--database_path", banco_dados,
-        "--image_path", imagens_dir
-    ], check=True)
+    # Cria reconstrução incremental simples
+    rec.incremental_mapping(database_path=os.path.join(pasta_saida, "database.db"),
+                            image_path=imagens_dir,
+                            output_path=pasta_saida)
 
-    # 2. Casar features (matching)
-    subprocess.run([
-        "colmap", "exhaustive_matcher",
-        "--database_path", banco_dados
-    ], check=True)
+    # Extrai estatísticas
+    cameras = len(rec.cameras)
+    imagens = len(rec.images)
+    pontos3d = len(rec.points3D)
 
-    # 3. Reconstrução incremental (simples)
-    rec_dir = os.path.join(pasta_saida, "sparse")
-    os.makedirs(rec_dir, exist_ok=True)
-    subprocess.run([
-        "colmap", "mapper",
-        "--database_path", banco_dados,
-        "--image_path", imagens_dir,
-        "--output_path", rec_dir
-    ], check=True)
+    return {
+        "cameras": cameras,
+        "imagens": imagens,
+        "pontos3D": pontos3d,
+        "saida": pasta_saida
+    }
 
-    return rec_dir
 
 def analisar(url_imagem):
     pasta_temp = tempfile.mkdtemp()
@@ -54,19 +49,19 @@ def analisar(url_imagem):
         img_path = baixar_imagem(url_imagem, pasta_temp)
 
         # Rodar Colmap
-        out_dir = rodar_colmap(img_path, pasta_temp)
+        resultado = rodar_colmap(img_path, pasta_temp)
 
-        # Montar resultado (exemplo: arquivos gerados)
-        resultado = {
+        # Montar resultado
+        return {
             "imagem": url_imagem,
-            "saida_colmap": os.listdir(out_dir),
+            "resultado_colmap": resultado,
             "status": "Análise concluída ✅"
         }
-        return resultado
     except Exception as e:
         return {"error": str(e)}
     finally:
         shutil.rmtree(pasta_temp, ignore_errors=True)
+
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
@@ -75,4 +70,4 @@ if __name__ == "__main__":
 
     url_imagem = sys.argv[1]
     resultado = analisar(url_imagem)
-    print(json.dumps(resultado, indent=2))
+    print(json.dumps(resultado, indent=2, ensure_ascii=False))
