@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useLocation } from "react-router-dom";
 import { FaUserCircle, FaFileUpload, FaFileAlt, FaDownload } from "react-icons/fa";
 import { MdNotStarted, MdAutorenew, MdCheckCircle } from "react-icons/md";
-import supabase from "./Supabase.js";
 import "./TelaInicial.css";
 
 // Variáveis fixas do Supabase
@@ -27,36 +26,16 @@ function TelaInicial() {
     setStatus("em análise");
 
     try {
-      // 1. Upload para bucket "canteiro-de-obras"
-      const { error: uploadError } = await supabase.storage
-        .from("canteiro de obras")
-        .upload(`imagens/${file.name}`, file, {
-          cacheControl: "3600",
-          upsert: true,
-        });
+      // 1. Envia o arquivo para a Edge Function via FormData
+      const formData = new FormData();
+      formData.append("file", file);
 
-      if (uploadError) throw new Error("Erro no upload: " + uploadError.message);
-
-      // 2. URL pública do arquivo
-      const { data: publicData } = supabase.storage
-        .from("canteiro de obras")
-        .getPublicUrl(`imagens/${file.name}`);
-
-      const publicUrl = publicData.publicUrl;
-      console.log("✅ URL pública do arquivo:", publicUrl);
-
-      // 3. Invoca a Edge Function rapid-service
       const response = await fetch(`${SUPABASE_URL}/functions/v1/rapid-service`, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
           "apikey": SUPABASE_ANON_KEY,
-          // "Authorization": `Bearer ${SUPABASE_ANON_KEY}`, // se precisar auth
         },
-        body: JSON.stringify({
-          fileUrl: publicUrl,
-          filename: file.name,
-        }),
+        body: formData,
       });
 
       if (!response.ok) {
@@ -64,12 +43,12 @@ function TelaInicial() {
         throw new Error(`Erro invoke (${response.status}): ${errMsg}`);
       }
 
-      // 4. Resultado da análise
+      // 2. Resultado da análise (já vem com a URL pública da imagem)
       const data = await response.json();
       setReport(data);
       setStatus("concluída");
 
-      // 5. Simula BIM (gera JSON fake para download)
+      // 3. Simula BIM (gera JSON fake para download)
       const fakeBimFile = new Blob([JSON.stringify(data, null, 2)], {
         type: "application/json",
       });
