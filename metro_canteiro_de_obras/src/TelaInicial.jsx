@@ -12,8 +12,7 @@ import "./TelaInicial.css";
 
 // Supabase
 const SUPABASE_URL = "https://aedludqrnwntsqgyjjla.supabase.co";
-const SUPABASE_ANON_KEY =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFlZGx1ZHFybndudHNxZ3lqamxhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA3NTE2OTYsImV4cCI6MjA3NjMyNzY5Nn0.DV8BB3SLXxBKSZ6pMCbCUmnhkLaujehwPxJi4zvIbRU";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFlZGx1ZHFybndudHNxZ3lqamxhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA3NTE2OTYsImV4cCI6MjA3NjMyNzY5Nn0.DV8BB3SLXxBKSZ6pMCbCUmnhkLaujehwPxJi4zvIbRU";
 const BUCKET_NAME = "canteiro de obras";
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -30,16 +29,6 @@ const categorizeDetections = (deteccoes) => {
   return categorias;
 };
 
-// Comparação simples
-const calcularProgresso = (a, b) => {
-  if (!a?.deteccoes || !b?.deteccoes) return { progresso: 0, novos: [] };
-  const setA = new Set(a.deteccoes.map(d => d.description));
-  const setB = new Set(b.deteccoes.map(d => d.description));
-  const novos = [...setB].filter(x => !setA.has(x));
-  const progresso = Math.min(100, Math.round((setB.size / (setA.size + novos.length)) * 100));
-  return { progresso, novos };
-};
-
 function TelaInicial() {
   const [selectedFile, setSelectedFile] = useState(null);
   const [status, setStatus] = useState("não iniciada");
@@ -51,7 +40,7 @@ function TelaInicial() {
   const location = useLocation();
   const username = location.state?.username || "Usuário";
 
-  // Buscar histórico
+  // Buscar histórico do bucket
   useEffect(() => {
     const fetchHistorico = async () => {
       const { data, error } = await supabase
@@ -94,7 +83,7 @@ function TelaInicial() {
     }
   };
 
-  // Toggle histórico
+  // Toggle seleção histórico
   const toggleSelecionado = (item) => {
     setSelecionados((prev) =>
       prev.find((s) => s.name === item.name)
@@ -107,43 +96,35 @@ function TelaInicial() {
 
   // Render relatório
   const renderReport = () => {
-    if (selecionados.length === 2) {
-      const [a, b] = selecionados;
-      const comparacao = calcularProgresso(a, b);
+    if (!report && selecionados.length === 0) return null;
+
+    // Erro
+    if (report?.error) {
       return (
-        <div className="report success">
-          <h3>📊 Comparação entre {a.name} e {b.name}</h3>
-          <progress value={comparacao.progresso} max="100"></progress>
-          <p>{comparacao.progresso}% concluído</p>
-          {comparacao.novos.length > 0 && (
-            <div>
-              <h4>Novos elementos</h4>
-              <ul>{comparacao.novos.map((n, i) => <li key={i}>{n}</li>)}</ul>
-            </div>
-          )}
-          <div className="compare-images">
-            <img src={a.url} alt="A" />
-            <img src={b.url} alt="B" />
-          </div>
+        <div className="report error">
+          <FaExclamationTriangle /> Erro: {report.error}
         </div>
       );
     }
 
     const current = report || selecionados[0];
-    if (!current) return null;
+    const categorias = current?.deteccoes ? categorizeDetections(current.deteccoes) : null;
 
-    if (current.error) {
-      return (
-        <div className="report error">
-          <FaExclamationTriangle /> Erro: {current.error}
-        </div>
-      );
-    }
-
-    const categorias = current.deteccoes ? categorizeDetections(current.deteccoes) : null;
     return (
       <div className="report success">
-        <h3>📊 Relatório de {current.arquivo || current.name}</h3>
+        <h3>📊 Relatório da Análise</h3>
+
+        {/* BIM */}
+        {current?.bim && (
+          <div className="bim-block">
+            <h4>Modelo BIM</h4>
+            <p>Progresso: {current.bim.progresso}</p>
+            <p><strong>Encontrados:</strong> {current.bim.encontrados.join(", ")}</p>
+            <p><strong>Faltando:</strong> {current.bim.faltando.join(", ")}</p>
+          </div>
+        )}
+
+        {/* Detecções */}
         {categorias && (
           <div className="detections">
             {Object.entries(categorias).map(([key, arr]) =>
@@ -156,6 +137,41 @@ function TelaInicial() {
             )}
           </div>
         )}
+
+        {/* Overlay */}
+        {current?.overlay && current.overlay.length > 0 && (
+          <div className="overlay-block">
+            <h4>Overlay AR/VR</h4>
+            <p>Bounding boxes detectados para renderização.</p>
+            <pre>{JSON.stringify(current.overlay.slice(0,3), null, 2)}...</pre>
+          </div>
+        )}
+
+        {/* Comparação histórica */}
+        {current?.comparacao && (
+          <div className="comparacao-block">
+            <h4>Comparação Histórica</h4>
+            <p>Progresso: {current.comparacao.progresso}</p>
+            {current.comparacao.novos?.length > 0 && (
+              <ul>
+                {current.comparacao.novos.map((n, i) => <li key={i}>{n}</li>)}
+              </ul>
+            )}
+            <div className="compare-images">
+              <img src={current.comparacao.imgA} alt="Histórico A" />
+              <img src={current.comparacao.imgB} alt="Histórico B" />
+            </div>
+          </div>
+        )}
+
+        {/* AR/VR placeholder */}
+        {current?.arvr && (
+          <div className="arvr-block">
+            <h4>AR/VR</h4>
+            <p>{current.arvr.instrucoes}</p>
+          </div>
+        )}
+
         {current.url && <img src={current.url} alt="obra" className="obra-img" />}
       </div>
     );

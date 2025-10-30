@@ -315,3 +315,55 @@ html, body, #root {
   .content-inner { padding: 1rem; max-width: 340px; }
   .upload-area { padding: 1rem; }
 }
+
+/* ========================= */
+/*  INCREMENTOS (NOVOS)     */
+/* ========================= */
+
+/* Blocos adicionais dentro do report */
+.bim-block,
+.overlay-block,
+.comparacao-block,
+.arvr-block {
+  width: 100%;
+  margin-top: 1rem;
+  padding: 1rem;
+  border-radius: 10px;
+  box-sizing: border-box;
+  font-size: 0.95rem;
+}
+
+/* BIM */
+.bim-block {
+  background: #f0f4ff;
+  border: 1px solid #003da5;
+}
+.bim-block h4 { color: #003da5; margin-bottom: 0.5rem; }
+
+/* Overlay */
+.overlay-block {
+  background: #fff7ed;
+  border: 1px solid #f59e0b;
+}
+.overlay-block h4 { color: #92400e; margin-bottom: 0.5rem; }
+.overlay-block pre {
+  background: #fefce8;
+  padding: 0.8rem;
+  border-radius: 6px;
+  overflow-x: auto;
+  font-size: 0.85rem;
+}
+
+/* Comparação */
+.comparacao-block {
+  background: #ecfdf5;
+  border: 1px solid #10b981;
+}
+.comparacao-block h4 { color: #065f46; margin-bottom: 0.5rem; }
+
+/* AR/VR */
+.arvr-block {
+  background: #eef2ff;
+  border: 1px solid #6366f1;
+}
+.arvr-block h4 { color: #3730a3; margin-bottom: 0.5rem; }
