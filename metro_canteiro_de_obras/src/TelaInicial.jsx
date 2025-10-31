@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import {
   FaUserCircle,
@@ -17,14 +17,18 @@ import {
 import { createClient } from "@supabase/supabase-js";
 import "./TelaInicial.css";
 
-// Supabase config
+// ============================
+// CONFIG
+// ============================
 const SUPABASE_URL = "https://aedludqrnwntsqgyjjla.supabase.co";
 const SUPABASE_ANON_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFlZGx1ZHFybndudHNxZ3lqamxhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA3NTE2OTYsImV4cCI6MjA3NjMyNzY5Nn0.DV8BB3SLXxBKSZ6pMCbCUmnhkLaujehwPxJi4zvIbRU";
-const BUCKET_NAME = "canteiro-de-obras";
+const BUCKET_NAME = "canteiro de obras";
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// Categoriza detecções visuais
+// ============================
+// HELPER: Categoriza detecções visuais
+// ============================
 const categorizeDetections = (deteccoes) => {
   const categorias = { pessoas: [], materiais: [], estruturas: [], outros: [] };
   (deteccoes || []).forEach((d) => {
@@ -57,10 +61,13 @@ function TelaInicial() {
   const [selecionados, setSelecionados] = useState([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  const canvasRef = useRef(null);
   const location = useLocation();
   const username = location.state?.username || "Usuário";
 
-  // Buscar histórico do bucket
+  // ============================
+  // Buscar histórico
+  // ============================
   useEffect(() => {
     const fetchHistorico = async () => {
       const { data, error } = await supabase
@@ -81,7 +88,9 @@ function TelaInicial() {
     fetchHistorico();
   }, [report]);
 
-  // Upload
+  // ============================
+  // Upload + análise
+  // ============================
   const handleFileChange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -92,17 +101,14 @@ function TelaInicial() {
       const formData = new FormData();
       formData.append("file", file);
 
-      const response = await fetch(
-        `${SUPABASE_URL}/functions/v1/rapid-service`,
-        {
-          method: "POST",
-          headers: {
-            apikey: SUPABASE_ANON_KEY,
-            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-          },
-          body: formData,
-        }
-      );
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/rapid-service`, {
+        method: "POST",
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+        body: formData,
+      });
 
       if (!response.ok) throw new Error(`Erro invoke (${response.status})`);
 
@@ -115,34 +121,54 @@ function TelaInicial() {
     }
   };
 
-  // Alternar seleção do histórico
-  const toggleSelecionado = (item) => {
-    setSelecionados((prev) =>
-      prev.find((s) => s.name === item.name)
-        ? prev.filter((s) => s.name !== item.name)
-        : prev.length < 2
-        ? [...prev, item]
-        : prev
-    );
-  };
+  // ============================
+  // Render overlay (YOLO/IFC)
+  // ============================
+  useEffect(() => {
+    if (!report?.overlay || report.overlay.length === 0) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx) return;
 
-  // Renderizar relatório
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Ajusta escala
+    const scale = 5; // escala simbólica de zoom
+    report.overlay.forEach((det) => {
+      const { xMin, yMin, xMax, yMax } = det.box;
+      const color = det.color || "#00ff00";
+      const width = (xMax - xMin) * scale;
+      const height = (yMax - yMin) * scale;
+      const x = xMin * scale + 200;
+      const y = yMin * scale + 200;
+
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x, y, width, height);
+
+      ctx.fillStyle = color;
+      ctx.font = "10px Arial";
+      ctx.fillText(`${det.name} (${Math.round(det.score * 100)}%)`, x + 3, y - 5);
+    });
+  }, [report]);
+
+  // ============================
+  // Render relatório textual
+  // ============================
   const renderReport = () => {
     if (!report && selecionados.length === 0) return null;
-    if (report?.error) {
+    if (report?.error)
       return (
         <div className="report error">
           <FaExclamationTriangle /> Erro: {report.error}
         </div>
       );
-    }
 
     const current = report || selecionados[0];
     const categorias = current?.deteccoes
       ? categorizeDetections(current.deteccoes)
       : null;
 
-    // Barra de progresso (simulação)
     const progresso = current?.bim?.progresso
       ? parseInt(current.bim.progresso)
       : current?.simulacao?.progressoEstimado
@@ -152,23 +178,18 @@ function TelaInicial() {
     return (
       <div className="report success">
         <h3>📊 Relatório da Análise</h3>
-
         {current?.tipo && (
-          <p className="tipo-arquivo">
-            Tipo de arquivo detectado:{" "}
-            <strong>{current.tipo.toUpperCase()}</strong>
+          <p>
+            Tipo de arquivo: <strong>{current.tipo.toUpperCase()}</strong>
           </p>
         )}
 
-        {/* Simulação de progresso */}
+        {/* Progresso */}
         {current?.simulacao && (
           <div className="progress-section">
             <h4>🚧 Progresso estimado</h4>
             <div className="progress-bar">
-              <div
-                className="progress-fill"
-                style={{ width: `${progresso}%` }}
-              ></div>
+              <div className="progress-fill" style={{ width: `${progresso}%` }} />
             </div>
             <p className="progress-text">{current.simulacao.mensagem}</p>
           </div>
@@ -180,8 +201,7 @@ function TelaInicial() {
             <h4>Modelo BIM</h4>
             <p>Progresso: {current.bim.progresso}</p>
             <p>
-              <strong>Encontrados:</strong>{" "}
-              {current.bim.encontrados.join(", ")}
+              <strong>Encontrados:</strong> {current.bim.encontrados.join(", ")}
             </p>
             <p>
               <strong>Faltando:</strong> {current.bim.faltando.join(", ")}
@@ -204,23 +224,31 @@ function TelaInicial() {
           </div>
         )}
 
-        {/* Overlay */}
+        {/* Render overlay visual */}
         {current?.overlay && current.overlay.length > 0 && (
-          <div className="overlay-block">
-            <h4>Overlay AR/VR</h4>
-            <pre>{JSON.stringify(current.overlay.slice(0, 3), null, 2)}...</pre>
+          <div className="overlay-preview">
+            <h4>🧱 Visualização 2D do Modelo / Detecções</h4>
+            <canvas ref={canvasRef} width={600} height={400} />
+            <div className="legend">
+              {[
+                ...new Set(current.overlay.map((d) => d.name)),
+              ].map((type, i) => {
+                const color =
+                  current.overlay.find((d) => d.name === type)?.color || "#ccc";
+                return (
+                  <div key={i} className="legend-item">
+                    <span
+                      className="color-box"
+                      style={{ background: color }}
+                    ></span>
+                    {type}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
 
-        {/* AR/VR */}
-        {current?.arvr && (
-          <div className="arvr-block">
-            <h4>AR/VR</h4>
-            <p>{current.arvr.instrucoes}</p>
-          </div>
-        )}
-
-        {/* Imagem */}
         {current.tipo === "imagem" && current.url && (
           <img src={current.url} alt="obra" className="obra-img" />
         )}
@@ -228,6 +256,9 @@ function TelaInicial() {
     );
   };
 
+  // ============================
+  // RENDER PRINCIPAL
+  // ============================
   return (
     <div className="tela-container">
       {/* Top bar */}
@@ -242,9 +273,7 @@ function TelaInicial() {
           {status === "concluída" && (
             <MdCheckCircle className="status-icon done" />
           )}
-          {status === "falhou" && (
-            <MdCancel className="status-icon failed" />
-          )}
+          {status === "falhou" && <MdCancel className="status-icon failed" />}
           <span className="status-text">{status}</span>
         </div>
         <div className="user-section">
@@ -267,14 +296,22 @@ function TelaInicial() {
             <input
               type="checkbox"
               checked={!!selecionados.find((s) => s.name === item.name)}
-              onChange={() => toggleSelecionado(item)}
+              onChange={() =>
+                setSelecionados((prev) =>
+                  prev.find((s) => s.name === item.name)
+                    ? prev.filter((s) => s.name !== item.name)
+                    : prev.length < 2
+                    ? [...prev, item]
+                    : prev
+                )
+              }
             />
             <p>{item.name}</p>
           </div>
         ))}
       </div>
 
-      {/* Conteúdo */}
+      {/* Conteúdo principal */}
       <div className="content">
         <div className="content-inner">
           <h2 className="welcome-text">Bem-vindo, {username}! 👋</h2>
@@ -284,7 +321,7 @@ function TelaInicial() {
             <input
               id="file-upload"
               type="file"
-              accept=".jpg,.jpeg,.png,.bmp,.gif,.webp,.ifc,.bim,.obj,.glb,.gltf,.stl,.zip"
+              accept=".jpg,.jpeg,.png,.bmp,.gif,.webp,.ifc,.bim,.obj,.glb,.gltf,.stl"
               onChange={handleFileChange}
               hidden
             />
