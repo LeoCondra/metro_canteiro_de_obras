@@ -1,4 +1,7 @@
-/* Reset */
+/* ========================= */
+/*        RESET GLOBAL       */
+/* ========================= */
+
 * {
   margin: 0;
   padding: 0;
@@ -13,7 +16,10 @@ html, body, #root {
   color: #333;
 }
 
-/* Layout principal */
+/* ========================= */
+/*     ESTRUTURA GERAL       */
+/* ========================= */
+
 .tela-container {
   display: flex;
   flex-direction: column;
@@ -22,7 +28,10 @@ html, body, #root {
   overflow: hidden;
 }
 
-/* Barra superior */
+/* ========================= */
+/*        BARRA SUPERIOR     */
+/* ========================= */
+
 .top-bar {
   background-color: #003da5;
   color: white;
@@ -71,7 +80,10 @@ html, body, #root {
   cursor: pointer;
 }
 
-/* Sidebar */
+/* ========================= */
+/*           SIDEBAR         */
+/* ========================= */
+
 .sidebar {
   position: fixed;
   top: 60px;
@@ -86,9 +98,7 @@ html, body, #root {
   z-index: 1000;
 }
 
-.sidebar.open {
-  left: 0;
-}
+.sidebar.open { left: 0; }
 
 .sidebar h3 {
   font-size: 1rem;
@@ -108,9 +118,7 @@ html, body, #root {
   transition: background 0.2s;
 }
 
-.history-item:hover {
-  background: #f0f4ff;
-}
+.history-item:hover { background: #f0f4ff; }
 
 .history-thumb {
   width: 40px;
@@ -120,7 +128,10 @@ html, body, #root {
   border: 1px solid #ccc;
 }
 
-/* Conteúdo centralizado */
+/* ========================= */
+/*         CONTEÚDO          */
+/* ========================= */
+
 .content {
   flex: 1;
   display: flex;
@@ -145,14 +156,16 @@ html, body, #root {
   text-align: center;
 }
 
-/* Texto de boas-vindas */
 .welcome-text {
   font-size: 1.4rem;
   font-weight: 600;
   color: #003da5;
 }
 
-/* Área de upload */
+/* ========================= */
+/*         UPLOAD            */
+/* ========================= */
+
 .upload-area {
   border: 2px dashed #003da5;
   border-radius: 12px;
@@ -178,7 +191,6 @@ html, body, #root {
   color: #003da5;
 }
 
-/* Arquivo selecionado */
 .file-display {
   margin-top: 1rem;
   display: flex;
@@ -200,7 +212,10 @@ html, body, #root {
   white-space: nowrap;
 }
 
-/* Bloco de relatório */
+/* ========================= */
+/*        RELATÓRIO          */
+/* ========================= */
+
 .report {
   margin-top: 1rem;
   padding: 1.2rem;
@@ -240,10 +255,10 @@ html, body, #root {
   margin-bottom: 0.4rem;
 }
 
-.ok-icon { color: green; }
-.error-icon { color: crimson; margin-right: 0.4rem; }
+/* ========================= */
+/* DETECÇÕES E CATEGORIAS   */
+/* ========================= */
 
-/* Grupos de detecções */
 .detections {
   margin-top: 1rem;
   display: flex;
@@ -262,10 +277,7 @@ html, body, #root {
   font-weight: 600;
 }
 
-.det-group ul {
-  list-style: none;
-  padding-left: 1rem;
-}
+.det-group ul { list-style: none; padding-left: 1rem; }
 
 .det-group ul li {
   display: flex;
@@ -280,17 +292,22 @@ html, body, #root {
 .det-group.estruturas { background: #ede9fe; border: 1px solid #a78bfa; }
 .det-group.outros { background: #fef2f2; border: 1px solid #f87171; }
 
-/* Comparação */
+/* ========================= */
+/*     COMPARAÇÃO / IMAGENS  */
+/* ========================= */
+
 .compare-images {
   display: flex;
   gap: 1rem;
   margin-top: 1rem;
 }
+
 .compare-images img {
   width: 48%;
   border: 1px solid #ddd;
   border-radius: 6px;
 }
+
 .obra-img {
   margin-top: 1rem;
   max-width: 100%;
@@ -298,29 +315,10 @@ html, body, #root {
   border: 1px solid #ddd;
 }
 
-/* Animação do status em progresso */
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-/* Responsividade */
-@media (max-width: 768px) {
-  .welcome-text { font-size: 1.2rem; }
-  .content-inner { padding: 1.5rem; max-width: 500px; }
-  .upload-area { padding: 1.5rem; }
-}
-
-@media (max-width: 480px) {
-  .content-inner { padding: 1rem; max-width: 340px; }
-  .upload-area { padding: 1rem; }
-}
-
 /* ========================= */
-/*  INCREMENTOS (NOVOS)     */
+/*    BLOCOS ESPECIAIS       */
 /* ========================= */
 
-/* Blocos adicionais dentro do report */
 .bim-block,
 .overlay-block,
 .comparacao-block,
@@ -329,22 +327,15 @@ html, body, #root {
   margin-top: 1rem;
   padding: 1rem;
   border-radius: 10px;
-  box-sizing: border-box;
   font-size: 0.95rem;
 }
 
 /* BIM */
-.bim-block {
-  background: #f0f4ff;
-  border: 1px solid #003da5;
-}
+.bim-block { background: #f0f4ff; border: 1px solid #003da5; }
 .bim-block h4 { color: #003da5; margin-bottom: 0.5rem; }
 
 /* Overlay */
-.overlay-block {
-  background: #fff7ed;
-  border: 1px solid #f59e0b;
-}
+.overlay-block { background: #fff7ed; border: 1px solid #f59e0b; }
 .overlay-block h4 { color: #92400e; margin-bottom: 0.5rem; }
 .overlay-block pre {
   background: #fefce8;
@@ -355,15 +346,126 @@ html, body, #root {
 }
 
 /* Comparação */
-.comparacao-block {
-  background: #ecfdf5;
-  border: 1px solid #10b981;
-}
+.comparacao-block { background: #ecfdf5; border: 1px solid #10b981; }
 .comparacao-block h4 { color: #065f46; margin-bottom: 0.5rem; }
 
 /* AR/VR */
-.arvr-block {
-  background: #eef2ff;
-  border: 1px solid #6366f1;
-}
+.arvr-block { background: #eef2ff; border: 1px solid #6366f1; }
 .arvr-block h4 { color: #3730a3; margin-bottom: 0.5rem; }
+
+/* ========================= */
+/*  SIMULAÇÃO DE PROGRESSO   */
+/* ========================= */
+
+.progress-section {
+  margin-top: 1.2rem;
+  background: #f9fafb;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  padding: 1rem 1.2rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.progress-section h4 {
+  color: #003da5;
+  font-weight: 600;
+  margin-bottom: 0.6rem;
+  font-size: 1rem;
+  text-align: left;
+}
+
+.progress-bar {
+  position: relative;
+  width: 100%;
+  height: 18px;
+  background: #e5e7eb;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);
+}
+
+.progress-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: linear-gradient(90deg, #00c853, #64dd17);
+  border-radius: 10px;
+  transition: width 0.8s ease-in-out;
+  box-shadow: 0 0 8px rgba(0, 200, 83, 0.6);
+}
+
+.progress-text {
+  margin-top: 0.6rem;
+  font-size: 0.9rem;
+  color: #374151;
+  text-align: center;
+  font-weight: 500;
+}
+
+/* Efeito brilho animado */
+@keyframes shimmer {
+  0% { background-position: -40px 0; }
+  100% { background-position: 40px 0; }
+}
+
+.progress-fill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(255,255,255,0.3) 25%, transparent 50%, rgba(255,255,255,0.3) 75%);
+  background-size: 50px 100%;
+  animation: shimmer 2s infinite linear;
+  border-radius: 10px;
+}
+
+/* ========================= */
+/*    ANIMAÇÕES E AJUSTES    */
+/* ========================= */
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.report.success, .report.error {
+  animation: fadeIn 0.6s ease forwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ========================= */
+/*     RESPONSIVIDADE        */
+/* ========================= */
+
+@media (max-width: 768px) {
+  .welcome-text { font-size: 1.2rem; }
+  .content-inner { padding: 1.5rem; max-width: 500px; }
+  .upload-area { padding: 1.5rem; }
+  .progress-bar { height: 14px; }
+  .progress-text { font-size: 0.85rem; }
+}
+
+@media (max-width: 480px) {
+  .content-inner { padding: 1rem; max-width: 340px; }
+  .upload-area { padding: 1rem; }
+}
+
+/* ========================= */
+/* BLOCO IDENTIFICAÇÃO TIPO  */
+/* ========================= */
+
+.tipo-arquivo {
+  background: #eff6ff;
+  border-left: 4px solid #003da5;
+  padding: 0.6rem 1rem;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  color: #003da5;
+  font-weight: 500;
+  margin-bottom: 0.8rem;
+}
