@@ -15,75 +15,27 @@ import {
   MdClose,
 } from "react-icons/md";
 import { createClient } from "@supabase/supabase-js";
-import pako from "pako";
+import * as THREE from "three";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import "./TelaInicial.css";
 
 // ============================
-// CONFIG
+// CONFIG SUPABASE
 // ============================
 const SUPABASE_URL = "https://aedludqrnwntsqgyjjla.supabase.co";
 const SUPABASE_ANON_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFlZGx1ZHFybndudHNxZ3lqamxhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA3NTE2OTYsImV4cCI6MjA3NjMyNzY5Nn0.DV8BB3SLXxBKSZ6pMCbCUmnhkLaujehwPxJi4zvIbRU";
-const BUCKET_NAME = "canteiro de obras";
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-// ============================
-// HELPERS
-// ============================
-const categorizeDetections = (deteccoes) => {
-  const categorias = { pessoas: [], materiais: [], estruturas: [], outros: [] };
-  (deteccoes || []).forEach((d) => {
-    const desc = d.description?.toLowerCase() || "";
-    if (desc.includes("person") || desc.includes("worker"))
-      categorias.pessoas.push(d.description);
-    else if (
-      desc.includes("brick") ||
-      desc.includes("concrete") ||
-      desc.includes("wood") ||
-      desc.includes("steel")
-    )
-      categorias.materiais.push(d.description);
-    else if (
-      desc.includes("building") ||
-      desc.includes("scaffold") ||
-      desc.includes("crane") ||
-      desc.includes("wall") ||
-      desc.includes("door") ||
-      desc.includes("window")
-    )
-      categorias.estruturas.push(d.description);
-    else categorias.outros.push(d.description);
-  });
-  return categorias;
-};
-
-// divide arquivo grande
-async function splitFile(file, partsCount = 8) {
-  const buffer = await file.arrayBuffer();
-  const total = buffer.byteLength;
-  const partSize = Math.ceil(total / partsCount);
-  const parts = [];
-
-  for (let i = 0; i < partsCount; i++) {
-    const start = i * partSize;
-    if (start >= total) break;
-    const end = Math.min(start + partSize, total);
-    const blob = new Blob([buffer.slice(start, end)]);
-    const part = new File([blob], `${file.name}.part${String(i + 1).padStart(2, "0")}`);
-    parts.push(part);
-  }
-
-  return parts;
-}
+const BUCKET_NAME = "canteiro de obras";
 
 function TelaInicial() {
   const [selectedFile, setSelectedFile] = useState(null);
   const [status, setStatus] = useState("não iniciada");
   const [report, setReport] = useState(null);
   const [historico, setHistorico] = useState([]);
-  const [selecionados, setSelecionados] = useState([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const canvasRef = useRef(null);
+  const viewerContainer = useRef(null);
   const location = useLocation();
   const username = location.state?.username || "Usuário";
 
@@ -94,7 +46,7 @@ function TelaInicial() {
     const fetchHistorico = async () => {
       const { data, error } = await supabase.storage
         .from(BUCKET_NAME)
-        .list("arquivos", { limit: 50 });
+        .list("arquivos", { limit: 30 });
       if (!error && data) {
         setHistorico(
           data.map((item) => ({
@@ -110,82 +62,26 @@ function TelaInicial() {
   }, [report]);
 
   // ============================
-  // Upload + análise com split
+  // Upload + análise Supabase
   // ============================
   const handleFileChange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     setSelectedFile(file);
-
-    const ext = file.name.split(".").pop().toLowerCase();
-    const isModelo = ["ifc", "bim", "obj", "glb", "gltf", "stl"].includes(ext);
+    setStatus("enviando...");
 
     try {
-      if (isModelo && file.size > 50 * 1024 * 1024) {
-        setStatus("dividindo arquivo...");
-        const parts = await splitFile(file);
-        const partNames = [];
-
-        setStatus("enviando partes...");
-        for (const [idx, part] of parts.entries()) {
-          const { error } = await supabase.storage
-            .from(BUCKET_NAME)
-            .upload(`arquivos/${part.name}`, part, { upsert: true });
-          if (error) throw error;
-          partNames.push(part.name);
-          setStatus(`enviando parte ${idx + 1}/${parts.length}`);
-        }
-
-        setStatus("analisando (merge)...");
-        const mergeResponse = await fetch(
-          `${SUPABASE_URL}/functions/v1/rapid-service`,
-          {
-            method: "POST",
-            headers: {
-              apikey: SUPABASE_ANON_KEY,
-              Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              tipo: "split_merge",
-              partes: partNames,
-            }),
-          }
-        );
-
-        if (!mergeResponse.ok)
-          throw new Error(`Erro invoke (${mergeResponse.status})`);
-        const mergeData = await mergeResponse.json();
-        setReport(mergeData);
-        setStatus("concluída");
-        return;
-      }
-
-      // modelo pequeno → compressão gzip padrão
-      setStatus("comprimindo...");
-      let fileToSend = file;
-      if (isModelo) {
-        const buffer = new Uint8Array(await file.arrayBuffer());
-        const compressed = pako.gzip(buffer);
-        const blob = new Blob([compressed], { type: "application/gzip" });
-        fileToSend = new File([blob], file.name + ".gz");
-      }
-
-      setStatus("enviando...");
       const formData = new FormData();
-      formData.append("file", fileToSend);
+      formData.append("file", file);
 
-      const response = await fetch(
-        `${SUPABASE_URL}/functions/v1/rapid-service`,
-        {
-          method: "POST",
-          headers: {
-            apikey: SUPABASE_ANON_KEY,
-            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-          },
-          body: formData,
-        }
-      );
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/-rapid-service`, {
+        method: "POST",
+        headers: {
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+        body: formData,
+      });
 
       if (!response.ok) throw new Error(`Erro invoke (${response.status})`);
       const data = await response.json();
@@ -199,33 +95,87 @@ function TelaInicial() {
   };
 
   // ============================
-  // Render overlay
+  // Renderização 3D leve (.GLB / .GLTF / fallback IFC convertido)
   // ============================
   useEffect(() => {
-    if (!report?.overlay || report.overlay.length === 0) return;
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext("2d");
-    if (!canvas || !ctx) return;
+    if (!report?.url) return;
+    const url = report.url;
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = "#0a0a0a";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // Só renderiza se for modelo suportado
+    if (!url.match(/\.(glb|gltf|ifc|bim)$/i)) return;
 
-    const scale = 4;
-    report.overlay.forEach((det) => {
-      const { xMin, yMin, xMax, yMax } = det.box;
-      const color = det.color || "#00ff00";
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 2;
-      ctx.strokeRect(xMin * scale, yMin * scale, (xMax - xMin) * scale, (yMax - yMin) * scale);
-      ctx.fillStyle = color;
-      ctx.font = "10px Arial";
-      ctx.fillText(`${det.name}`, xMin * scale + 3, yMin * scale - 5);
-    });
+    const container = viewerContainer.current;
+    if (!container) return;
+    container.innerHTML = "";
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(50, 640 / 480, 0.1, 1000);
+    camera.position.set(6, 6, 6);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(640, 480);
+    renderer.setClearColor(0xf5f6fa);
+    container.appendChild(renderer.domElement);
+
+    // Luzes básicas
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+    dirLight.position.set(10, 10, 10);
+    scene.add(dirLight);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+
+    // Controles de órbita
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+
+    // Plano base
+    const plane = new THREE.Mesh(
+      new THREE.PlaneGeometry(100, 100),
+      new THREE.MeshBasicMaterial({ color: 0xe0e0e0, side: THREE.DoubleSide })
+    );
+    plane.rotation.x = -Math.PI / 2;
+    scene.add(plane);
+
+    // Loader leve
+    const loader = new GLTFLoader();
+    loader.load(
+      url,
+      (gltf) => {
+        gltf.scene.traverse((child) => {
+          if (child.isMesh) {
+            child.material = new THREE.MeshBasicMaterial({
+              color: 0x007aff,
+              wireframe: true,
+            });
+          }
+        });
+        scene.add(gltf.scene);
+        setStatus("modelo renderizado ✅");
+      },
+      (xhr) => {
+        const pct = Math.round((xhr.loaded / xhr.total) * 100);
+        setStatus(`carregando modelo ${pct}%`);
+      },
+      (err) => {
+        console.error("❌ Erro ao carregar modelo:", err);
+        setStatus("falhou");
+      }
+    );
+
+    // Animação
+    const animate = () => {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    };
+    animate();
+
+    return () => {
+      renderer.dispose();
+    };
   }, [report]);
 
   // ============================
-  // Render relatório textual
+  // Relatório textual
   // ============================
   const renderReport = () => {
     if (!report) return null;
@@ -236,31 +186,30 @@ function TelaInicial() {
         </div>
       );
 
-    const current = report;
     const progresso = parseInt(
-      current?.simulacao?.progressoEstimado?.replace("%", "") || "0"
+      report?.simulacao?.progressoEstimado?.replace("%", "") || "0"
     );
 
     return (
       <div className="report success">
         <h3>📊 Relatório da Análise</h3>
-        <p>
-          Tipo de arquivo: <strong>{current.tipo?.toUpperCase()}</strong>
-        </p>
-        <p>
-          <strong>Status:</strong> {current.status}
-        </p>
-
-        {current?.simulacao && (
+        <p><strong>Status:</strong> {report.status}</p>
+        {report.tipo && <p>Tipo: {report.tipo.toUpperCase()}</p>}
+        {report.descricao && <p>📝 {report.descricao}</p>}
+        {report.resumo && (
+          <ul>
+            {Object.entries(report.resumo).map(([k, v]) => (
+              <li key={k}><strong>{k}</strong>: {v}</li>
+            ))}
+          </ul>
+        )}
+        {report.simulacao && (
           <div className="progress-section">
-            <h4>🚧 Progresso estimado</h4>
+            <h4>🚧 Progresso</h4>
             <div className="progress-bar">
-              <div
-                className="progress-fill"
-                style={{ width: `${progresso}%` }}
-              />
+              <div className="progress-fill" style={{ width: `${progresso}%` }} />
             </div>
-            <p className="progress-text">{current.simulacao.mensagem}</p>
+            <p className="progress-text">{report.simulacao.mensagem}</p>
           </div>
         )}
       </div>
@@ -268,20 +217,17 @@ function TelaInicial() {
   };
 
   // ============================
-  // Render principal
+  // Layout principal
   // ============================
   return (
     <div className="tela-container">
+      {/* BARRA SUPERIOR */}
       <div className="top-bar">
         <div className="status-container">
           {status === "não iniciada" && <MdNotStarted className="status-icon not-started" />}
-          {status.includes("comprimindo") ||
-          status.includes("enviando") ||
-          status.includes("dividindo") ||
-          status.includes("analisando") ? (
-            <MdAutorenew className="status-icon in-progress" />
-          ) : null}
-          {status === "concluída" && <MdCheckCircle className="status-icon done" />}
+          {status.includes("enviando") && <MdAutorenew className="status-icon in-progress" />}
+          {status.includes("carregando") && <MdAutorenew className="status-icon in-progress" />}
+          {status.includes("modelo renderizado") && <MdCheckCircle className="status-icon done" />}
           {status === "falhou" && <MdCancel className="status-icon failed" />}
           <span className="status-text">{status}</span>
         </div>
@@ -295,25 +241,28 @@ function TelaInicial() {
         </div>
       </div>
 
+      {/* SIDEBAR */}
       <div className={`sidebar ${sidebarOpen ? "open" : ""}`}>
-        <h3>Histórico</h3>
+        <h3>📂 Histórico</h3>
         {historico.map((item, i) => (
           <div key={i} className="history-item">
-            <p>{item.name}</p>
+            <a href={item.url} target="_blank" rel="noreferrer">{item.name}</a>
           </div>
         ))}
       </div>
 
+      {/* CONTEÚDO */}
       <div className="content">
         <div className="content-inner">
-          <h2 className="welcome-text">Bem-vindo, {username}! 👋</h2>
+          <h2 className="welcome-text">Bem-vindo, {username}! 👷‍♂️</h2>
+
           <label htmlFor="file-upload" className="upload-area">
             <FaFileUpload className="upload-icon" />
-            <p>Clique ou arraste um arquivo (imagem ou modelo BIM)</p>
+            <p>Clique ou arraste um arquivo (imagem ou modelo 3D)</p>
             <input
               id="file-upload"
               type="file"
-              accept=".jpg,.jpeg,.png,.bmp,.gif,.webp,.ifc,.bim,.obj,.glb,.gltf,.stl"
+              accept=".glb,.gltf,.ifc,.bim,.jpg,.jpeg,.png"
               onChange={handleFileChange}
               hidden
             />
@@ -327,6 +276,20 @@ function TelaInicial() {
           )}
 
           {renderReport()}
+
+          {/* VISUALIZAÇÃO 3D */}
+          <div
+            ref={viewerContainer}
+            className="viewer3d"
+            style={{
+              width: "640px",
+              height: "480px",
+              marginTop: "20px",
+              borderRadius: "10px",
+              border: "2px solid #003da5",
+              overflow: "hidden",
+            }}
+          />
         </div>
       </div>
     </div>
