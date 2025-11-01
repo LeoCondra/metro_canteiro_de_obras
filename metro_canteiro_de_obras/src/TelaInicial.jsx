@@ -15,6 +15,7 @@ import {
   MdClose,
 } from "react-icons/md";
 import { createClient } from "@supabase/supabase-js";
+import pako from "pako";
 import "./TelaInicial.css";
 
 // ============================
@@ -27,7 +28,7 @@ const BUCKET_NAME = "canteiro de obras";
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ============================
-// HELPER: Categoriza detecções visuais
+// HELPERS
 // ============================
 const categorizeDetections = (deteccoes) => {
   const categorias = { pessoas: [], materiais: [], estruturas: [], outros: [] };
@@ -45,13 +46,35 @@ const categorizeDetections = (deteccoes) => {
     else if (
       desc.includes("building") ||
       desc.includes("scaffold") ||
-      desc.includes("crane")
+      desc.includes("crane") ||
+      desc.includes("wall") ||
+      desc.includes("door") ||
+      desc.includes("window")
     )
       categorias.estruturas.push(d.description);
     else categorias.outros.push(d.description);
   });
   return categorias;
 };
+
+// divide arquivo grande
+async function splitFile(file, partsCount = 8) {
+  const buffer = await file.arrayBuffer();
+  const total = buffer.byteLength;
+  const partSize = Math.ceil(total / partsCount);
+  const parts = [];
+
+  for (let i = 0; i < partsCount; i++) {
+    const start = i * partSize;
+    if (start >= total) break;
+    const end = Math.min(start + partSize, total);
+    const blob = new Blob([buffer.slice(start, end)]);
+    const part = new File([blob], `${file.name}.part${String(i + 1).padStart(2, "0")}`);
+    parts.push(part);
+  }
+
+  return parts;
+}
 
 function TelaInicial() {
   const [selectedFile, setSelectedFile] = useState(null);
@@ -60,18 +83,16 @@ function TelaInicial() {
   const [historico, setHistorico] = useState([]);
   const [selecionados, setSelecionados] = useState([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-
   const canvasRef = useRef(null);
   const location = useLocation();
   const username = location.state?.username || "Usuário";
 
   // ============================
-  // Buscar histórico
+  // Histórico
   // ============================
   useEffect(() => {
     const fetchHistorico = async () => {
-      const { data, error } = await supabase
-        .storage
+      const { data, error } = await supabase.storage
         .from(BUCKET_NAME)
         .list("arquivos", { limit: 50 });
       if (!error && data) {
@@ -89,40 +110,96 @@ function TelaInicial() {
   }, [report]);
 
   // ============================
-  // Upload + análise
+  // Upload + análise com split
   // ============================
   const handleFileChange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     setSelectedFile(file);
-    setStatus("em análise");
+
+    const ext = file.name.split(".").pop().toLowerCase();
+    const isModelo = ["ifc", "bim", "obj", "glb", "gltf", "stl"].includes(ext);
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
+      if (isModelo && file.size > 50 * 1024 * 1024) {
+        setStatus("dividindo arquivo...");
+        const parts = await splitFile(file);
+        const partNames = [];
 
-      const response = await fetch(`${SUPABASE_URL}/functions/v1/rapid-service`, {
-        method: "POST",
-        headers: {
-          apikey: SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-        },
-        body: formData,
-      });
+        setStatus("enviando partes...");
+        for (const [idx, part] of parts.entries()) {
+          const { error } = await supabase.storage
+            .from(BUCKET_NAME)
+            .upload(`arquivos/${part.name}`, part, { upsert: true });
+          if (error) throw error;
+          partNames.push(part.name);
+          setStatus(`enviando parte ${idx + 1}/${parts.length}`);
+        }
+
+        setStatus("analisando (merge)...");
+        const mergeResponse = await fetch(
+          `${SUPABASE_URL}/functions/v1/rapid-service`,
+          {
+            method: "POST",
+            headers: {
+              apikey: SUPABASE_ANON_KEY,
+              Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              tipo: "split_merge",
+              partes: partNames,
+            }),
+          }
+        );
+
+        if (!mergeResponse.ok)
+          throw new Error(`Erro invoke (${mergeResponse.status})`);
+        const mergeData = await mergeResponse.json();
+        setReport(mergeData);
+        setStatus("concluída");
+        return;
+      }
+
+      // modelo pequeno → compressão gzip padrão
+      setStatus("comprimindo...");
+      let fileToSend = file;
+      if (isModelo) {
+        const buffer = new Uint8Array(await file.arrayBuffer());
+        const compressed = pako.gzip(buffer);
+        const blob = new Blob([compressed], { type: "application/gzip" });
+        fileToSend = new File([blob], file.name + ".gz");
+      }
+
+      setStatus("enviando...");
+      const formData = new FormData();
+      formData.append("file", fileToSend);
+
+      const response = await fetch(
+        `${SUPABASE_URL}/functions/v1/rapid-service`,
+        {
+          method: "POST",
+          headers: {
+            apikey: SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          },
+          body: formData,
+        }
+      );
 
       if (!response.ok) throw new Error(`Erro invoke (${response.status})`);
-
       const data = await response.json();
       setReport(data);
       setStatus("concluída");
     } catch (err) {
+      console.error(err);
       setReport({ error: err.message });
       setStatus("falhou");
     }
   };
 
   // ============================
-  // Render overlay (YOLO/IFC)
+  // Render overlay
   // ============================
   useEffect(() => {
     if (!report?.overlay || report.overlay.length === 0) return;
@@ -131,24 +208,19 @@ function TelaInicial() {
     if (!canvas || !ctx) return;
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#0a0a0a";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Ajusta escala
-    const scale = 5; // escala simbólica de zoom
+    const scale = 4;
     report.overlay.forEach((det) => {
       const { xMin, yMin, xMax, yMax } = det.box;
       const color = det.color || "#00ff00";
-      const width = (xMax - xMin) * scale;
-      const height = (yMax - yMin) * scale;
-      const x = xMin * scale + 200;
-      const y = yMin * scale + 200;
-
       ctx.strokeStyle = color;
       ctx.lineWidth = 2;
-      ctx.strokeRect(x, y, width, height);
-
+      ctx.strokeRect(xMin * scale, yMin * scale, (xMax - xMin) * scale, (yMax - yMin) * scale);
       ctx.fillStyle = color;
       ctx.font = "10px Arial";
-      ctx.fillText(`${det.name} (${Math.round(det.score * 100)}%)`, x + 3, y - 5);
+      ctx.fillText(`${det.name}`, xMin * scale + 3, yMin * scale - 5);
     });
   }, [report]);
 
@@ -156,131 +228,66 @@ function TelaInicial() {
   // Render relatório textual
   // ============================
   const renderReport = () => {
-    if (!report && selecionados.length === 0) return null;
-    if (report?.error)
+    if (!report) return null;
+    if (report.error)
       return (
         <div className="report error">
           <FaExclamationTriangle /> Erro: {report.error}
         </div>
       );
 
-    const current = report || selecionados[0];
-    const categorias = current?.deteccoes
-      ? categorizeDetections(current.deteccoes)
-      : null;
-
-    const progresso = current?.bim?.progresso
-      ? parseInt(current.bim.progresso)
-      : current?.simulacao?.progressoEstimado
-      ? parseInt(current.simulacao.progressoEstimado)
-      : 0;
+    const current = report;
+    const progresso = parseInt(
+      current?.simulacao?.progressoEstimado?.replace("%", "") || "0"
+    );
 
     return (
       <div className="report success">
         <h3>📊 Relatório da Análise</h3>
-        {current?.tipo && (
-          <p>
-            Tipo de arquivo: <strong>{current.tipo.toUpperCase()}</strong>
-          </p>
-        )}
+        <p>
+          Tipo de arquivo: <strong>{current.tipo?.toUpperCase()}</strong>
+        </p>
+        <p>
+          <strong>Status:</strong> {current.status}
+        </p>
 
-        {/* Progresso */}
         {current?.simulacao && (
           <div className="progress-section">
             <h4>🚧 Progresso estimado</h4>
             <div className="progress-bar">
-              <div className="progress-fill" style={{ width: `${progresso}%` }} />
+              <div
+                className="progress-fill"
+                style={{ width: `${progresso}%` }}
+              />
             </div>
             <p className="progress-text">{current.simulacao.mensagem}</p>
           </div>
-        )}
-
-        {/* BIM */}
-        {current?.bim && (
-          <div className="bim-block">
-            <h4>Modelo BIM</h4>
-            <p>Progresso: {current.bim.progresso}</p>
-            <p>
-              <strong>Encontrados:</strong> {current.bim.encontrados.join(", ")}
-            </p>
-            <p>
-              <strong>Faltando:</strong> {current.bim.faltando.join(", ")}
-            </p>
-          </div>
-        )}
-
-        {/* Categorias visuais */}
-        {categorias && (
-          <div className="detections">
-            {Object.entries(categorias).map(
-              ([key, arr]) =>
-                arr.length > 0 && (
-                  <div key={key} className="det-group">
-                    <h5>{key}</h5>
-                    <ul>{arr.map((v, i) => <li key={i}>{v}</li>)}</ul>
-                  </div>
-                )
-            )}
-          </div>
-        )}
-
-        {/* Render overlay visual */}
-        {current?.overlay && current.overlay.length > 0 && (
-          <div className="overlay-preview">
-            <h4>🧱 Visualização 2D do Modelo / Detecções</h4>
-            <canvas ref={canvasRef} width={600} height={400} />
-            <div className="legend">
-              {[
-                ...new Set(current.overlay.map((d) => d.name)),
-              ].map((type, i) => {
-                const color =
-                  current.overlay.find((d) => d.name === type)?.color || "#ccc";
-                return (
-                  <div key={i} className="legend-item">
-                    <span
-                      className="color-box"
-                      style={{ background: color }}
-                    ></span>
-                    {type}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {current.tipo === "imagem" && current.url && (
-          <img src={current.url} alt="obra" className="obra-img" />
         )}
       </div>
     );
   };
 
   // ============================
-  // RENDER PRINCIPAL
+  // Render principal
   // ============================
   return (
     <div className="tela-container">
-      {/* Top bar */}
       <div className="top-bar">
         <div className="status-container">
-          {status === "não iniciada" && (
-            <MdNotStarted className="status-icon not-started" />
-          )}
-          {status === "em análise" && (
+          {status === "não iniciada" && <MdNotStarted className="status-icon not-started" />}
+          {status.includes("comprimindo") ||
+          status.includes("enviando") ||
+          status.includes("dividindo") ||
+          status.includes("analisando") ? (
             <MdAutorenew className="status-icon in-progress" />
-          )}
-          {status === "concluída" && (
-            <MdCheckCircle className="status-icon done" />
-          )}
+          ) : null}
+          {status === "concluída" && <MdCheckCircle className="status-icon done" />}
           {status === "falhou" && <MdCancel className="status-icon failed" />}
           <span className="status-text">{status}</span>
         </div>
+
         <div className="user-section">
-          <button
-            className="toggle-btn"
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-          >
+          <button className="toggle-btn" onClick={() => setSidebarOpen(!sidebarOpen)}>
             {sidebarOpen ? <MdClose /> : <MdMenu />}
           </button>
           <span className="username">{username}</span>
@@ -288,30 +295,15 @@ function TelaInicial() {
         </div>
       </div>
 
-      {/* Sidebar */}
       <div className={`sidebar ${sidebarOpen ? "open" : ""}`}>
         <h3>Histórico</h3>
         {historico.map((item, i) => (
           <div key={i} className="history-item">
-            <input
-              type="checkbox"
-              checked={!!selecionados.find((s) => s.name === item.name)}
-              onChange={() =>
-                setSelecionados((prev) =>
-                  prev.find((s) => s.name === item.name)
-                    ? prev.filter((s) => s.name !== item.name)
-                    : prev.length < 2
-                    ? [...prev, item]
-                    : prev
-                )
-              }
-            />
             <p>{item.name}</p>
           </div>
         ))}
       </div>
 
-      {/* Conteúdo principal */}
       <div className="content">
         <div className="content-inner">
           <h2 className="welcome-text">Bem-vindo, {username}! 👋</h2>
