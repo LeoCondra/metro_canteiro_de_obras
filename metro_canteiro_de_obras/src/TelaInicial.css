@@ -74,16 +74,24 @@ html, body, #root {
 .user-icon { font-size: 1.6rem; }
 .username { font-weight: 600; }
 
-.toggle-btn {
+.toggle-btn,
+.history-replay {
   background: transparent;
   border: none;
   color: white;
   font-size: 1.6rem;
   cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.history-replay:hover,
+.toggle-btn:hover {
+  transform: scale(1.15);
+  color: #a4c6ff;
 }
 
 /* ========================= */
-/* SIDEBAR                   */
+/* SIDEBAR HISTÓRICO         */
 /* ========================= */
 .sidebar {
   position: fixed;
@@ -108,6 +116,20 @@ html, body, #root {
   color: #003da5;
 }
 
+.filtro-data {
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  margin-bottom: 1rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  outline: none;
+  transition: border 0.2s ease;
+}
+
+.filtro-data:focus {
+  border-color: #003da5;
+}
+
 .history-item {
   margin-bottom: 1rem;
   cursor: pointer;
@@ -115,12 +137,13 @@ html, body, #root {
   border-radius: 8px;
   border: 1px solid #e5e7eb;
   background: #f9fafb;
-  transition: all 0.2s ease;
+  transition: all 0.25s ease;
 }
 
 .history-item:hover {
-  background: #f0f4ff;
+  background: #eef4ff;
   border-color: #003da5;
+  transform: translateX(4px);
 }
 
 .history-item p {
@@ -156,6 +179,7 @@ html, body, #root {
   width: 100%;
   max-width: 850px;
   text-align: center;
+  animation: fadeIn 0.6s ease;
 }
 
 .welcome-text {
@@ -222,6 +246,8 @@ html, body, #root {
   text-align: left;
   font-size: 0.95rem;
   word-wrap: break-word;
+  position: relative;
+  animation: fadeIn 0.5s ease;
 }
 
 .report.success {
@@ -248,6 +274,49 @@ html, body, #root {
 }
 
 /* ========================= */
+/* BOTÃO VOLTAR              */
+/* ========================= */
+.btn-voltar {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: #003da5;
+  color: white;
+  border: none;
+  padding: 0.6rem 1rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  margin-bottom: 1rem;
+  transition: all 0.25s ease;
+}
+
+.btn-voltar:hover {
+  background: #002b73;
+  transform: translateX(-2px);
+}
+
+/* ========================= */
+/* COMPARAÇÃO LOCAL          */
+/* ========================= */
+.comparacao-local {
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  border-left: 4px solid #4f46e5;
+  color: #312e81;
+  padding: 0.8rem 1rem;
+  border-radius: 8px;
+  margin: 1rem 0;
+  animation: fadeIn 0.6s ease;
+}
+
+.comparacao-local h4 {
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  color: #4338ca;
+}
+
+/* ========================= */
 /* ALERTAS                   */
 /* ========================= */
 .alerta {
@@ -259,64 +328,6 @@ html, body, #root {
   margin: 0.8rem 0;
   font-weight: 500;
   animation: fadeIn 0.5s ease;
-}
-
-/* ========================= */
-/* BARRA DE PROGRESSO        */
-/* ========================= */
-.progress-section {
-  margin-top: 1.2rem;
-  background: #f9fafb;
-  border: 1px solid #d1d5db;
-  border-radius: 10px;
-  padding: 1rem 1.2rem;
-  width: 100%;
-}
-
-.progress-section h4 {
-  color: #003da5;
-  font-weight: 600;
-  margin-bottom: 0.6rem;
-  font-size: 1rem;
-}
-
-.progress-bar {
-  position: relative;
-  width: 100%;
-  height: 18px;
-  background: #e5e7eb;
-  border-radius: 10px;
-  overflow: hidden;
-}
-
-.progress-fill {
-  position: absolute;
-  top: 0;
-  left: 0;
-  height: 100%;
-  background: repeating-linear-gradient(
-    45deg,
-    #ffffff,
-    #ffffff 10px,
-    #f0f0f0 10px,
-    #f0f0f0 20px
-  );
-  border-radius: 10px;
-  transition: width 0.8s ease-in-out;
-  animation: zebraMove 3s linear infinite;
-}
-
-@keyframes zebraMove {
-  from { background-position: 0 0; }
-  to { background-position: 40px 0; }
-}
-
-.progress-text {
-  margin-top: 0.6rem;
-  font-size: 0.9rem;
-  color: #374151;
-  text-align: center;
-  font-weight: 500;
 }
 
 /* ========================= */

@@ -13,6 +13,8 @@ import {
   MdCancel,
   MdMenu,
   MdClose,
+  MdHistory,
+  MdArrowBack,
 } from "react-icons/md";
 import { createClient } from "@supabase/supabase-js";
 import {
@@ -45,105 +47,116 @@ function TelaInicial() {
   const [historico, setHistorico] = useState([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [filtroData, setFiltroData] = useState("");
+  const [taxaLocal, setTaxaLocal] = useState(null);
   const canvasRef = useRef(null);
   const viewerRef = useRef(null);
   const location = useLocation();
   const username = location.state?.username || "Usuário";
 
   // ============================
-  // 🧾 HISTÓRICO DE ANÁLISES (BANCO)
+  // 🧾 HISTÓRICO
   // ============================
   useEffect(() => {
     const fetchHistorico = async () => {
       const { data, error } = await supabase
         .from("analises")
         .select("*")
+        .eq("username", username)
         .order("created_at", { ascending: false })
         .limit(30);
-
       if (!error && data) setHistorico(data);
     };
     fetchHistorico();
-  }, [report]);
+  }, [report, username]);
 
   // ============================
-  // 📤 UPLOAD + ANÁLISE
+  // 📤 UPLOAD E ANÁLISE
   // ============================
   const handleFileChange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+
     setSelectedFile(file);
-    setStatus("analisando...");
+    setStatus("enviando...");
+    setProgress(0);
 
-    const { error: uploadError } = await supabase.storage
+    const uploadName = `${Date.now()}-${file.name}`;
+    const uploadPath = `arquivos/${uploadName}`;
+    const { data: signedData, error: signedError } = await supabase.storage
       .from(BUCKET_NAME)
-      .upload(`arquivos/${file.name}`, file, { upsert: true });
+      .createSignedUploadUrl(uploadPath);
 
-    if (uploadError) {
+    if (signedError) {
       setStatus("falhou");
-      setReport({
-        tipo: "erro",
-        status: "Erro no upload",
-        descricao: uploadError.message,
-      });
+      console.error("Erro ao criar URL de upload:", signedError);
       return;
     }
 
-    const publicUrl = supabase.storage
-      .from(BUCKET_NAME)
-      .getPublicUrl(`arquivos/${file.name}`).data.publicUrl;
-
-    const isBim = /\.(ifc|bim|glb|gltf)$/i.test(file.name);
-    const progressoFisico = Math.round(40 + Math.random() * 55);
-    const compatibilidade = 70 + Math.random() * 25;
-
-    // Simulação de análise
-    const simulated = {
-      tipo: isBim ? "bim" : "imagem",
-      status: "Análise concluída ✅",
-      descricao: isBim
-        ? "Renderização IFC concluída com sucesso."
-        : "Imagem analisada com IA — elementos identificados.",
-      url: publicUrl,
-      progresso_fisico: progressoFisico,
-      comparacao: { taxa: compatibilidade },
-      overlay: !isBim
-        ? [
-            {
-              nome: "Pilar",
-              cor: "#2563eb",
-              box: { xMin: 120, yMin: 80, xMax: 200, yMax: 200 },
-            },
-            {
-              nome: "Viga",
-              cor: "#22c55e",
-              box: { xMin: 250, yMin: 100, xMax: 350, yMax: 200 },
-            },
-          ]
-        : [],
+    const xhr = new XMLHttpRequest();
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) {
+        setProgress(Math.round((e.loaded / e.total) * 100));
+      }
     };
 
-    // Salvar no banco
-    await supabase.from("analises").insert([
-      {
-        filename: file.name,
-        url: publicUrl,
-        tipo: simulated.tipo,
-        username,
-        progresso_fisico: simulated.progresso_fisico,
-        taxa_compatibilidade: simulated.comparacao.taxa,
-        detections: simulated.overlay,
-        created_at: new Date().toISOString(),
-      },
-    ]);
+    xhr.onload = async () => {
+      setStatus("analisando...");
+      try {
+        const response = await fetch(`${SUPABASE_URL}/functions/v1/-rapid-analyze`, {
+          method: "POST",
+          mode: "cors",
+          headers: {
+            apikey: SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          },
+          body: (() => {
+            const formData = new FormData();
+            formData.append("file", file, file.name);
+            formData.append("username", username);
+            return formData;
+          })(),
+        });
 
-    setReport(simulated);
-    setStatus("concluída");
-    setProgress(100);
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.descricao || "Erro na análise");
+
+        setReport(result);
+        setStatus("concluída");
+        setProgress(100);
+      } catch (err) {
+        console.error(err);
+        setReport({
+          tipo: "erro",
+          status: "Falha na análise",
+          descricao: err.message,
+        });
+        setStatus("falhou");
+      }
+    };
+
+    xhr.onerror = () => setStatus("falhou");
+    xhr.open("PUT", signedData.signedUrl);
+    xhr.send(file);
   };
 
   // ============================
-  // 🖼️ VISUALIZAÇÃO DE IMAGEM
+  // ⚙️ COMPARAÇÃO LOCAL MODELO × IMAGEM
+  // ============================
+  useEffect(() => {
+    if (!report?.detections || report.tipo !== "imagem") return;
+    const ifcElements = ["Wall", "Slab", "Column"];
+    const matches = ifcElements.filter((el) =>
+      report.detections?.some((d) =>
+        d.nome?.toLowerCase().includes(el.toLowerCase())
+      )
+    );
+    const taxa = Math.round((matches.length / ifcElements.length) * 100);
+    setTaxaLocal(taxa);
+  }, [report]);
+
+  // ============================
+  // 🖼️ OVERLAY 2D
   // ============================
   useEffect(() => {
     if (!report?.overlay || report.overlay.length === 0) return;
@@ -155,36 +168,28 @@ function TelaInicial() {
     ctx.fillStyle = "#f9fafb";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    const scale = 1.5;
     report.overlay.forEach((det) => {
       const { xMin, yMin, xMax, yMax } = det.box;
       ctx.strokeStyle = det.cor || "#2563eb";
       ctx.lineWidth = 2;
-      ctx.strokeRect(
-        xMin * scale,
-        yMin * scale,
-        (xMax - xMin) * scale,
-        (yMax - yMin) * scale
-      );
+      ctx.strokeRect(xMin, yMin, xMax - xMin, yMax - yMin);
       ctx.fillStyle = det.cor || "#2563eb";
       ctx.font = "12px Arial";
-      ctx.fillText(det.nome, xMin * scale + 5, yMin * scale - 5);
+      ctx.fillText(det.nome, xMin + 5, yMin - 5);
     });
   }, [report]);
 
   // ============================
-  // 🧱 VISUALIZAÇÃO IFC (3D)
+  // 🧱 VIEWER 3D
   // ============================
   useEffect(() => {
-    if (!report?.url || report.tipo !== "bim") return;
-
+    if (!report?.url || report.tipo !== "modelo") return;
     const container = viewerRef.current;
     if (!container) return;
     container.innerHTML = "";
 
     const scene = new Scene();
     scene.background = new Color(0xf3f4f6);
-
     const width = container.clientWidth || 600;
     const height = 400;
 
@@ -210,16 +215,13 @@ function TelaInicial() {
       report.url,
       (model) => {
         scene.add(model);
-
         const box = new Box3().setFromObject(model);
         const center = box.getCenter(new Vector3());
         const size = box.getSize(new Vector3()).length();
-        const fitDistance = size / (2 * Math.tan((Math.PI * camera.fov) / 360));
+        const fit = size / (2 * Math.tan((Math.PI * camera.fov) / 360));
 
         controls.target.copy(center);
-        camera.position.copy(
-          center.clone().add(new Vector3(fitDistance, fitDistance, fitDistance))
-        );
+        camera.position.copy(center.clone().add(new Vector3(fit, fit, fit)));
         camera.lookAt(center);
 
         const animate = () => {
@@ -231,7 +233,7 @@ function TelaInicial() {
       },
       undefined,
       (error) => {
-        console.error("❌ Erro ao renderizar IFC:", error);
+        console.error("❌ Erro IFC:", error);
         setReport({
           tipo: "erro",
           status: "Falha na renderização IFC",
@@ -251,70 +253,68 @@ function TelaInicial() {
   // ============================
   const renderReport = () => {
     if (!report) return null;
-    if (report.tipo === "erro") {
+    if (report.tipo === "erro")
       return (
         <div className="report error">
-          <FaExclamationTriangle /> {report.status}
-          <p>{report.descricao}</p>
+          <FaExclamationTriangle /> {report.descricao}
+          <button className="btn-voltar" onClick={() => setReport(null)}>
+            <MdArrowBack /> Voltar
+          </button>
         </div>
       );
-    }
 
     return (
       <div className="report success">
+        <button className="btn-voltar" onClick={() => setReport(null)}>
+          <MdArrowBack /> Voltar
+        </button>
+
         <div className="tipo-arquivo">
-          Tipo de arquivo: <strong>{report.tipo?.toUpperCase()}</strong>
+          Tipo: <strong>{report.tipo?.toUpperCase()}</strong>
         </div>
         <p><strong>Status:</strong> {report.status}</p>
         {report.descricao && <p><strong>Descrição:</strong> {report.descricao}</p>}
 
-        {/* ⚠️ ALERTA DE INCONSISTÊNCIA */}
-        {report.comparacao?.taxa < 75 && (
-          <div className="alerta">
-            ⚠️ Inconsistência detectada — compatibilidade baixa ({report.comparacao.taxa.toFixed(1)}%)
+        {taxaLocal !== null && (
+          <div className="comparacao-local">
+            <h4>🧩 Comparação modelo × imagem</h4>
+            <p>Compatibilidade: {taxaLocal}%</p>
+            {taxaLocal < 70 && (
+              <div className="alerta">
+                ⚠️ Inconsistência detectada: compatibilidade abaixo do ideal.
+              </div>
+            )}
           </div>
         )}
 
-        {/* 📊 BARRA DE PROGRESSO */}
-        {report.progresso_fisico && (
+        {report.simulacao && (
           <div className="progress-section">
-            <h4>📊 Progresso Físico Estimado</h4>
-            <div className="progress-bar">
-              <div
-                className="progress-fill"
-                style={{
-                  width: `${report.progresso_fisico}%`,
-                  background:
-                    report.progresso_fisico < 50
-                      ? "#f59e0b"
-                      : report.progresso_fisico < 80
-                      ? "#3b82f6"
-                      : "#22c55e",
-                }}
-              ></div>
-            </div>
-            <p className="progress-text">{report.progresso_fisico}% concluído</p>
+            <h4>📊 {report.simulacao.mensagem}</h4>
+            <p>{report.simulacao.progressoEstimado}%</p>
           </div>
         )}
-
-        {/* 3D IFC */}
-        {report.tipo === "bim" && (
-          <div className="overlay-preview">
-            <h4>🧱 Visualização 3D do Modelo</h4>
-            <div ref={viewerRef} className="ifc-viewer-container"></div>
-          </div>
-        )}
-
-        {/* OVERLAY 2D */}
-        {report.overlay && report.overlay.length > 0 && report.tipo !== "bim" && (
+        {report.overlay && report.overlay.length > 0 && (
           <div className="overlay-preview">
             <h4>🔹 Visualização</h4>
             <canvas ref={canvasRef} width={600} height={400}></canvas>
           </div>
         )}
+        {report.tipo === "modelo" && (
+          <div className="overlay-preview">
+            <h4>🧱 Visualização 3D</h4>
+            <div ref={viewerRef} className="ifc-viewer-container"></div>
+          </div>
+        )}
       </div>
     );
   };
+
+  // ============================
+  // 🧭 RENDER PRINCIPAL
+  // ============================
+  const historicoFiltrado = historico.filter(
+    (item) => !filtroData || item.created_at.startsWith(filtroData)
+  );
 
   return (
     <div className="tela-container">
@@ -324,12 +324,15 @@ function TelaInicial() {
           {status.includes("analisando") && <MdAutorenew className="status-icon in-progress" />}
           {status === "concluída" && <MdCheckCircle className="status-icon done" />}
           {status === "falhou" && <MdCancel className="status-icon failed" />}
-          <span className="status-text">{status}</span>
+          <span className="status-text">{status} {progress > 0 && `(${progress}%)`}</span>
         </div>
 
         <div className="user-section">
           <button className="toggle-btn" onClick={() => setSidebarOpen(!sidebarOpen)}>
             {sidebarOpen ? <MdClose /> : <MdMenu />}
+          </button>
+          <button className="history-replay" title="Reproduzir histórico" onClick={() => window.location.reload()}>
+            <MdHistory />
           </button>
           <span className="username">{username}</span>
           <FaUserCircle className="user-icon" />
@@ -339,37 +342,45 @@ function TelaInicial() {
       {/* SIDEBAR HISTÓRICO */}
       <div className={`sidebar ${sidebarOpen ? "open" : ""}`}>
         <h3>Histórico</h3>
-        {historico.map((item, i) => (
+        <input
+          type="date"
+          className="filtro-data"
+          onChange={(e) => setFiltroData(e.target.value)}
+        />
+        {historicoFiltrado.map((item, i) => (
           <div key={i} className="history-item" onClick={() => setReport(item)}>
             <p><strong>{item.filename}</strong></p>
             <small>{new Date(item.created_at).toLocaleString()}</small>
             <p>Avanço: {item.progresso_fisico}%</p>
-            <p>Compat.: {item.taxa_compatibilidade?.toFixed(1)}%</p>
           </div>
         ))}
       </div>
 
       <div className="content">
         <div className="content-inner">
-          <h2 className="welcome-text">Bem-vindo, {username}! 👷‍♂️</h2>
-          <label htmlFor="file-upload" className="upload-area">
-            <FaFileUpload className="upload-icon" />
-            <p>Envie uma imagem ou modelo BIM para análise</p>
-            <input
-              id="file-upload"
-              type="file"
-              accept="image/*,.ifc,.bim,.obj,.glb,.gltf"
-              capture="environment"
-              onChange={handleFileChange}
-              hidden
-            />
-          </label>
+          {!report && (
+            <>
+              <h2 className="welcome-text">Bem-vindo, {username}! 👷‍♂️</h2>
+              <label htmlFor="file-upload" className="upload-area">
+                <FaFileUpload className="upload-icon" />
+                <p>Envie uma imagem ou modelo BIM (.ifc/.glb) para análise</p>
+                <input
+                  id="file-upload"
+                  type="file"
+                  accept="image/*,.ifc,.bim,.obj,.glb,.gltf,.stl"
+                  capture="environment"
+                  onChange={handleFileChange}
+                  hidden
+                />
+              </label>
 
-          {selectedFile && (
-            <div className="file-display">
-              <FaFileAlt className="file-icon" />
-              <span>{selectedFile.name}</span>
-            </div>
+              {selectedFile && (
+                <div className="file-display">
+                  <FaFileAlt className="file-icon" />
+                  <span>{selectedFile.name}</span>
+                </div>
+              )}
+            </>
           )}
 
           {renderReport()}
