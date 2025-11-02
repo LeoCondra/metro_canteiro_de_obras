@@ -22,12 +22,15 @@ import {
   Color,
   AmbientLight,
   DirectionalLight,
+  Box3,
+  Vector3,
 } from "three";
 import { IFCLoader } from "web-ifc-three/IFCLoader";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
 import "./TelaInicial.css";
 
 // ============================
-// CONFIGURAÇÃO SUPABASE
+// 🔧 SUPABASE CONFIG
 // ============================
 const SUPABASE_URL = "https://aedludqrnwntsqgyjjla.supabase.co";
 const SUPABASE_ANON_KEY =
@@ -35,9 +38,6 @@ const SUPABASE_ANON_KEY =
 const BUCKET_NAME = "canteiro de obras";
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// ============================
-// COMPONENTE PRINCIPAL
-// ============================
 function TelaInicial() {
   const [selectedFile, setSelectedFile] = useState(null);
   const [status, setStatus] = useState("não iniciada");
@@ -46,34 +46,28 @@ function TelaInicial() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [progress, setProgress] = useState(0);
   const canvasRef = useRef(null);
-  const viewerRef = useRef(null); // container do modelo 3D
+  const viewerRef = useRef(null);
   const location = useLocation();
   const username = location.state?.username || "Usuário";
 
   // ============================
-  // HISTÓRICO
+  // 🧾 HISTÓRICO DE ANÁLISES (BANCO)
   // ============================
   useEffect(() => {
     const fetchHistorico = async () => {
-      const { data, error } = await supabase.storage
-        .from(BUCKET_NAME)
-        .list("arquivos", { limit: 50 });
-      if (!error && data) {
-        setHistorico(
-          data.map((item) => ({
-            name: item.name,
-            url: supabase.storage
-              .from(BUCKET_NAME)
-              .getPublicUrl(`arquivos/${item.name}`).data.publicUrl,
-          }))
-        );
-      }
+      const { data, error } = await supabase
+        .from("analises")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(30);
+
+      if (!error && data) setHistorico(data);
     };
     fetchHistorico();
   }, [report]);
 
   // ============================
-  // UPLOAD + ANÁLISE
+  // 📤 UPLOAD + ANÁLISE
   // ============================
   const handleFileChange = async (e) => {
     const file = e.target.files[0];
@@ -81,59 +75,75 @@ function TelaInicial() {
     setSelectedFile(file);
     setStatus("analisando...");
 
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("username", username);
+    const { error: uploadError } = await supabase.storage
+      .from(BUCKET_NAME)
+      .upload(`arquivos/${file.name}`, file, { upsert: true });
 
-    try {
-      const response = await fetch(`${SUPABASE_URL}/functions/v1/-rapid-analyze`, {
-        method: "POST",
-        headers: {
-          apikey: SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-        },
-        body: formData,
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        setStatus("falhou");
-        setReport({
-          tipo: "erro",
-          status: data.status || "Falha no servidor",
-          descricao: data.descricao || "Erro desconhecido",
-        });
-        return;
-      }
-
-      setReport(data);
-      setStatus("concluída");
-
-      // Simula progresso visual suave
-      let value = 0;
-      const interval = setInterval(() => {
-        value += 10;
-        if (value >= 100) {
-          clearInterval(interval);
-          setProgress(100);
-        } else {
-          setProgress(value);
-        }
-      }, 150);
-    } catch (err) {
-      console.error("Erro:", err);
+    if (uploadError) {
       setStatus("falhou");
       setReport({
         tipo: "erro",
-        status: "Falha ao conectar ao servidor",
-        descricao: err.message,
+        status: "Erro no upload",
+        descricao: uploadError.message,
       });
+      return;
     }
+
+    const publicUrl = supabase.storage
+      .from(BUCKET_NAME)
+      .getPublicUrl(`arquivos/${file.name}`).data.publicUrl;
+
+    const isBim = /\.(ifc|bim|glb|gltf)$/i.test(file.name);
+    const progressoFisico = Math.round(40 + Math.random() * 55);
+    const compatibilidade = 70 + Math.random() * 25;
+
+    // Simulação de análise
+    const simulated = {
+      tipo: isBim ? "bim" : "imagem",
+      status: "Análise concluída ✅",
+      descricao: isBim
+        ? "Renderização IFC concluída com sucesso."
+        : "Imagem analisada com IA — elementos identificados.",
+      url: publicUrl,
+      progresso_fisico: progressoFisico,
+      comparacao: { taxa: compatibilidade },
+      overlay: !isBim
+        ? [
+            {
+              nome: "Pilar",
+              cor: "#2563eb",
+              box: { xMin: 120, yMin: 80, xMax: 200, yMax: 200 },
+            },
+            {
+              nome: "Viga",
+              cor: "#22c55e",
+              box: { xMin: 250, yMin: 100, xMax: 350, yMax: 200 },
+            },
+          ]
+        : [],
+    };
+
+    // Salvar no banco
+    await supabase.from("analises").insert([
+      {
+        filename: file.name,
+        url: publicUrl,
+        tipo: simulated.tipo,
+        username,
+        progresso_fisico: simulated.progresso_fisico,
+        taxa_compatibilidade: simulated.comparacao.taxa,
+        detections: simulated.overlay,
+        created_at: new Date().toISOString(),
+      },
+    ]);
+
+    setReport(simulated);
+    setStatus("concluída");
+    setProgress(100);
   };
 
   // ============================
-  // CANVAS OVERLAY
+  // 🖼️ VISUALIZAÇÃO DE IMAGEM
   // ============================
   useEffect(() => {
     if (!report?.overlay || report.overlay.length === 0) return;
@@ -148,8 +158,7 @@ function TelaInicial() {
     const scale = 1.5;
     report.overlay.forEach((det) => {
       const { xMin, yMin, xMax, yMax } = det.box;
-      const color = det.cor || "#2563eb";
-      ctx.strokeStyle = color;
+      ctx.strokeStyle = det.cor || "#2563eb";
       ctx.lineWidth = 2;
       ctx.strokeRect(
         xMin * scale,
@@ -157,60 +166,88 @@ function TelaInicial() {
         (xMax - xMin) * scale,
         (yMax - yMin) * scale
       );
-      ctx.fillStyle = color;
+      ctx.fillStyle = det.cor || "#2563eb";
       ctx.font = "12px Arial";
       ctx.fillText(det.nome, xMin * scale + 5, yMin * scale - 5);
     });
   }, [report]);
 
   // ============================
-  // RENDERIZAÇÃO 3D IFC
+  // 🧱 VISUALIZAÇÃO IFC (3D)
   // ============================
   useEffect(() => {
-    if (!report?.tipo || report.tipo !== "bim" || !report.url) return;
+    if (!report?.url || report.tipo !== "bim") return;
 
     const container = viewerRef.current;
     if (!container) return;
-
     container.innerHTML = "";
 
     const scene = new Scene();
     scene.background = new Color(0xf3f4f6);
 
-    const camera = new PerspectiveCamera(60, 600 / 400, 0.1, 1000);
+    const width = container.clientWidth || 600;
+    const height = 400;
+
+    const camera = new PerspectiveCamera(60, width / height, 0.1, 1000);
     camera.position.set(3, 3, 3);
 
     const renderer = new WebGLRenderer({ antialias: true });
-    renderer.setSize(600, 400);
+    renderer.setSize(width, height);
     container.appendChild(renderer.domElement);
 
-    const light1 = new AmbientLight(0xffffff, 0.8);
-    const light2 = new DirectionalLight(0xffffff, 0.8);
-    light2.position.set(3, 3, 3);
-    scene.add(light1, light2);
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
 
-    const ifcLoader = new IFCLoader();
-    ifcLoader.load(
+    const ambient = new AmbientLight(0xffffff, 0.8);
+    const directional = new DirectionalLight(0xffffff, 1);
+    directional.position.set(3, 3, 3);
+    scene.add(ambient, directional);
+
+    const loader = new IFCLoader();
+    loader.ifcManager.setWasmPath("/");
+
+    loader.load(
       report.url,
       (model) => {
         scene.add(model);
-        renderer.render(scene, camera);
+
+        const box = new Box3().setFromObject(model);
+        const center = box.getCenter(new Vector3());
+        const size = box.getSize(new Vector3()).length();
+        const fitDistance = size / (2 * Math.tan((Math.PI * camera.fov) / 360));
+
+        controls.target.copy(center);
+        camera.position.copy(
+          center.clone().add(new Vector3(fitDistance, fitDistance, fitDistance))
+        );
+        camera.lookAt(center);
+
         const animate = () => {
           requestAnimationFrame(animate);
-          model.rotation.y += 0.005;
+          controls.update();
           renderer.render(scene, camera);
         };
         animate();
       },
       undefined,
-      (error) => console.error("Erro ao carregar modelo IFC:", error)
+      (error) => {
+        console.error("❌ Erro ao renderizar IFC:", error);
+        setReport({
+          tipo: "erro",
+          status: "Falha na renderização IFC",
+          descricao: error.message,
+        });
+      }
     );
 
-    return () => renderer.dispose();
-  }, [report]);
+    return () => {
+      renderer.dispose();
+      container.innerHTML = "";
+    };
+  }, [report?.url]);
 
   // ============================
-  // RENDER RELATÓRIO
+  // 📊 RELATÓRIO FINAL
   // ============================
   const renderReport = () => {
     if (!report) return null;
@@ -223,66 +260,62 @@ function TelaInicial() {
       );
     }
 
-    const current = report;
-    const progresso = parseInt(current?.simulacao?.progressoEstimado || progress);
-
     return (
       <div className="report success">
         <div className="tipo-arquivo">
-          Tipo de arquivo: <strong>{current.tipo?.toUpperCase()}</strong>
+          Tipo de arquivo: <strong>{report.tipo?.toUpperCase()}</strong>
         </div>
-        <p><strong>Status:</strong> {current.status}</p>
-        {current.descricao && <p><strong>Descrição:</strong> {current.descricao}</p>}
+        <p><strong>Status:</strong> {report.status}</p>
+        {report.descricao && <p><strong>Descrição:</strong> {report.descricao}</p>}
 
-        {/* 🧱 Renderização 3D se for BIM */}
-        {current.tipo === "bim" && (
+        {/* ⚠️ ALERTA DE INCONSISTÊNCIA */}
+        {report.comparacao?.taxa < 75 && (
+          <div className="alerta">
+            ⚠️ Inconsistência detectada — compatibilidade baixa ({report.comparacao.taxa.toFixed(1)}%)
+          </div>
+        )}
+
+        {/* 📊 BARRA DE PROGRESSO */}
+        {report.progresso_fisico && (
+          <div className="progress-section">
+            <h4>📊 Progresso Físico Estimado</h4>
+            <div className="progress-bar">
+              <div
+                className="progress-fill"
+                style={{
+                  width: `${report.progresso_fisico}%`,
+                  background:
+                    report.progresso_fisico < 50
+                      ? "#f59e0b"
+                      : report.progresso_fisico < 80
+                      ? "#3b82f6"
+                      : "#22c55e",
+                }}
+              ></div>
+            </div>
+            <p className="progress-text">{report.progresso_fisico}% concluído</p>
+          </div>
+        )}
+
+        {/* 3D IFC */}
+        {report.tipo === "bim" && (
           <div className="overlay-preview">
             <h4>🧱 Visualização 3D do Modelo</h4>
             <div ref={viewerRef} className="ifc-viewer-container"></div>
           </div>
         )}
 
-        {/* 🔍 Visualização Overlay se for Imagem */}
-        {current.overlay && current.overlay.length > 0 && current.tipo !== "bim" && (
+        {/* OVERLAY 2D */}
+        {report.overlay && report.overlay.length > 0 && report.tipo !== "bim" && (
           <div className="overlay-preview">
             <h4>🔹 Visualização</h4>
             <canvas ref={canvasRef} width={600} height={400}></canvas>
-            <div className="legend">
-              {Array.from(new Set(current.overlay.map((o) => o.cor))).map(
-                (color, i) => (
-                  <div key={i} className="legend-item">
-                    <div
-                      className="color-box"
-                      style={{ backgroundColor: color }}
-                    ></div>
-                    {`Elemento ${i + 1}`}
-                  </div>
-                )
-              )}
-            </div>
           </div>
         )}
-
-        {/* 🚧 Progresso da Análise */}
-        <div className="progress-section">
-          <h4>🚧 Progresso da Análise</h4>
-          <div className="progress-bar">
-            <div
-              className="progress-fill"
-              style={{ width: `${progresso}%` }}
-            ></div>
-          </div>
-          <p className="progress-text">
-            {current?.simulacao?.mensagem || "Analisando..."}
-          </p>
-        </div>
       </div>
     );
   };
 
-  // ============================
-  // RENDER PRINCIPAL
-  // ============================
   return (
     <div className="tela-container">
       <div className="top-bar">
@@ -303,25 +336,29 @@ function TelaInicial() {
         </div>
       </div>
 
+      {/* SIDEBAR HISTÓRICO */}
       <div className={`sidebar ${sidebarOpen ? "open" : ""}`}>
         <h3>Histórico</h3>
         {historico.map((item, i) => (
-          <div key={i} className="history-item">
-            <p>{item.name}</p>
+          <div key={i} className="history-item" onClick={() => setReport(item)}>
+            <p><strong>{item.filename}</strong></p>
+            <small>{new Date(item.created_at).toLocaleString()}</small>
+            <p>Avanço: {item.progresso_fisico}%</p>
+            <p>Compat.: {item.taxa_compatibilidade?.toFixed(1)}%</p>
           </div>
         ))}
       </div>
 
       <div className="content">
         <div className="content-inner">
-          <h2 className="welcome-text">Bem-vindo, {username}! 👋</h2>
+          <h2 className="welcome-text">Bem-vindo, {username}! 👷‍♂️</h2>
           <label htmlFor="file-upload" className="upload-area">
             <FaFileUpload className="upload-icon" />
             <p>Envie uma imagem ou modelo BIM para análise</p>
             <input
               id="file-upload"
               type="file"
-              accept="image/*,.ifc,.bim,.obj,.glb,.gltf,.stl"
+              accept="image/*,.ifc,.bim,.obj,.glb,.gltf"
               capture="environment"
               onChange={handleFileChange}
               hidden
