@@ -35,15 +35,19 @@ import { createClient } from "@supabase/supabase-js";
 import "./TelaInicial.css";
 
 // ============================
-// 🌐 URLs e CONFIGURAÇÕES
+// 🌐 CONFIGURAÇÕES
 // ============================
 const SUPABASE_URL = "https://aedludqrnwntsqgyjjla.supabase.co";
 const SUPABASE_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFlZGx1ZHFybndudHNxZ3lqamxhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA3NTE2OTYsImV4cCI6MjA3NjMyNzY5Nn0.DV8BB3SLXxBKSZ6pMCbCUmnhkLaujehwPxJi4zvIbRU";
 const BUCKET = "canteiro de obras";
 
-const NODE_RENDER_URL = "https://teu-render.onrender.com/compress"; // ⚙️ backend de compressão
-const ANALYZE_URL = "https://aedludqrnwntsqgyjjla.functions.supabase.co/-rapid-analyze"; // ☁️ análise
+// 🔗 Coloca o domínio do backend Node hospedado no Render:
+const NODE_RENDER_URL = "https://node-compressor.onrender.com/compress";
+
+// 🔗 URL exata da edge function Supabase:
+const ANALYZE_URL =
+  "https://aedludqrnwntsqgyjjla.functions.supabase.co/-rapid-analyze";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -61,21 +65,24 @@ function TelaInicial() {
   const username = location.state?.username || "Usuário";
 
   // ============================
-  // 📜 CARREGAR HISTÓRICO DO USUÁRIO
+  // 📜 HISTÓRICO
   // ============================
   const carregarHistorico = async () => {
     try {
-      const { data, error } = await supabase.storage.from(BUCKET).list(`arquivos/${username}`, {
-        limit: 100,
-        sortBy: { column: "created_at", order: "desc" },
-      });
+      const { data, error } = await supabase.storage
+        .from(BUCKET)
+        .list(`arquivos/${username}`, {
+          limit: 100,
+          sortBy: { column: "created_at", order: "desc" },
+        });
       if (error) throw error;
 
-      // adiciona URLs públicas
       const items = data
         .filter((f) => f.name)
         .map((f) => {
-          const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(`arquivos/${username}/${f.name}`);
+          const { data: urlData } = supabase.storage
+            .from(BUCKET)
+            .getPublicUrl(`arquivos/${username}/${f.name}`);
           const ext = f.name.split(".").pop().toLowerCase();
           const tipo = ["jpg", "jpeg", "png", "gif", "bmp", "webp"].includes(ext)
             ? "imagem"
@@ -87,7 +94,6 @@ function TelaInicial() {
             url: urlData.publicUrl,
           };
         });
-
       setHistorico(items);
     } catch (err) {
       console.error("❌ Erro ao carregar histórico:", err);
@@ -99,7 +105,7 @@ function TelaInicial() {
   }, []);
 
   // ============================
-  // 📤 UPLOAD + ANÁLISE AUTOMÁTICA
+  // 📤 UPLOAD + ANÁLISE
   // ============================
   const handleFileChange = async (e) => {
     const file = e.target.files[0];
@@ -111,6 +117,7 @@ function TelaInicial() {
 
     const ext = file.name.split(".").pop().toLowerCase();
     const isImage = ["jpg", "jpeg", "png", "bmp", "gif", "webp"].includes(ext);
+
     const formData = new FormData();
     formData.append("file", file);
     formData.append("username", username);
@@ -118,16 +125,15 @@ function TelaInicial() {
     try {
       const endpoint = isImage ? ANALYZE_URL : NODE_RENDER_URL;
       const response = await fetch(endpoint, { method: "POST", body: formData });
-      if (!response.ok) throw new Error("Falha no processamento");
+
+      if (!response.ok) throw new Error("Falha no processamento do arquivo.");
 
       const result = await response.json();
-      console.log("📥 Retorno:", result);
+      console.log("📥 Retorno do servidor:", result);
 
       setReport(result);
       setProgress(100);
       setStatus("concluída");
-
-      // recarregar histórico
       setTimeout(() => carregarHistorico(), 3000);
     } catch (err) {
       console.error("❌ Erro:", err);
@@ -141,7 +147,7 @@ function TelaInicial() {
   };
 
   // ============================
-  // 🧱 VIEWER 3D (para modelos)
+  // 🧱 VISUALIZAÇÃO 3D
   // ============================
   useEffect(() => {
     const item = viewingHistoryItem || report;
@@ -209,7 +215,13 @@ function TelaInicial() {
       return (
         <div className="report error">
           <FaExclamationTriangle /> {item.descricao}
-          <button className="btn-voltar" onClick={() => setReport(null)}>
+          <button
+            className="btn-voltar"
+            onClick={() => {
+              setReport(null);
+              setViewingHistoryItem(null);
+            }}
+          >
             <MdArrowBack /> Voltar
           </button>
         </div>
@@ -218,20 +230,40 @@ function TelaInicial() {
     if (item.tipo === "imagem")
       return (
         <div className="report success">
-          <button className="btn-voltar" onClick={() => { setReport(null); setViewingHistoryItem(null); }}>
+          <button
+            className="btn-voltar"
+            onClick={() => {
+              setReport(null);
+              setViewingHistoryItem(null);
+            }}
+          >
             <MdArrowBack /> Voltar
           </button>
-          <p><strong>Status:</strong> {item.status}</p>
-          <img src={item.url} alt="analisada" style={{ maxWidth: "300px", borderRadius: "10px" }} />
+          <p>
+            <strong>Status:</strong> {item.status}
+          </p>
+          <img
+            src={item.url}
+            alt="Analisada"
+            style={{ maxWidth: "300px", borderRadius: "10px" }}
+          />
         </div>
       );
 
     return (
       <div className="report success">
-        <button className="btn-voltar" onClick={() => { setReport(null); setViewingHistoryItem(null); }}>
+        <button
+          className="btn-voltar"
+          onClick={() => {
+            setReport(null);
+            setViewingHistoryItem(null);
+          }}
+        >
           <MdArrowBack /> Voltar
         </button>
-        <p><strong>Status:</strong> {item.status}</p>
+        <p>
+          <strong>Status:</strong> {item.status}
+        </p>
         <div className="overlay-preview">
           <h4>🧱 Visualização 3D</h4>
           <div ref={viewerRef} className="ifc-viewer-container"></div>
@@ -241,17 +273,23 @@ function TelaInicial() {
   };
 
   // ============================
-  // 🕓 HISTÓRICO VISUAL
+  // 🕓 HISTÓRICO
   // ============================
   const renderHistorico = () => (
     <div className="historico-container">
-      <h3><FaClock /> Histórico de uploads</h3>
+      <h3>
+        <FaClock /> Histórico de uploads
+      </h3>
       {historico.length === 0 ? (
         <p>Nenhum arquivo encontrado.</p>
       ) : (
         <ul className="historico-lista">
           {historico.map((item, i) => (
-            <li key={i} onClick={() => setViewingHistoryItem(item)} className="historico-item">
+            <li
+              key={i}
+              onClick={() => setViewingHistoryItem(item)}
+              className="historico-item"
+            >
               {item.tipo === "imagem" ? <FaImage /> : <FaCube />}{" "}
               <strong>{item.nome}</strong>
               <span className="data">{item.data}</span>
@@ -269,15 +307,24 @@ function TelaInicial() {
     <div className="tela-container">
       <div className="top-bar">
         <div className="status-container">
-          {status === "não iniciada" && <MdNotStarted className="status-icon not-started" />}
-          {status.includes("processando") && <MdAutorenew className="status-icon in-progress" />}
-          {status === "concluída" && <MdCheckCircle className="status-icon done" />}
+          {status === "não iniciada" && (
+            <MdNotStarted className="status-icon not-started" />
+          )}
+          {status.includes("processando") && (
+            <MdAutorenew className="status-icon in-progress" />
+          )}
+          {status === "concluída" && (
+            <MdCheckCircle className="status-icon done" />
+          )}
           {status === "falhou" && <MdCancel className="status-icon failed" />}
           <span className="status-text">{status}</span>
         </div>
 
         <div className="user-section">
-          <button className="toggle-btn" onClick={() => setSidebarOpen(!sidebarOpen)}>
+          <button
+            className="toggle-btn"
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+          >
             {sidebarOpen ? <MdClose /> : <MdMenu />}
           </button>
           <MdHistory onClick={() => carregarHistorico()} />

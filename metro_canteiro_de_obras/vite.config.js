@@ -12,7 +12,8 @@ export default defineConfig({
     port: 4173, // porta usada no comando "vite preview"
     host: true,
     allowedHosts: [
-      "metro-canteiro-de-obras.onrender.com", // ✅ domínio público do Render liberado
+      "metro-canteiro-de-obras.onrender.com",
+       "node-compressor.onrender.com", // ✅ domínio público do Render liberado
     ],
   },
   build: {
