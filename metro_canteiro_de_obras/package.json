@@ -3,35 +3,37 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
- "scripts": {
-  "dev": "vite",
-  "build": "vite build",
-  "lint": "eslint .",
-  "preview": "vite preview",
-  "start": "vite preview --port $PORT --host"
-},
-  "dependencies": {
-  "@supabase/supabase-js": "2.78.0",
-  "@tensorflow-models/mobilenet": "2.1.1",
-  "@tensorflow/tfjs": "4.22.0",
-  "pako": "2.1.0",
-  "react": "^19.2.0",
-  "react-dom": "^19.2.0",
-  "react-icons": "5.5.0",
-  "react-router-dom": "7.9.4",
-  "three": "0.135.0",
-  "three-stdlib": "2.36.0",
-  "web-ifc": "0.0.46",
-  "web-ifc-three": "0.0.125",
-  "web-ifc-viewer": "1.0.218"
-},
-"overrides": {
-  "web-ifc-three": {
-    "web-ifc": "0.0.46"
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "start": "vite preview --port $PORT --host"
   },
-  "web-ifc-viewer": {
+  "dependencies": {
+    "@supabase/supabase-js": "2.78.0",
+    "@tensorflow-models/mobilenet": "2.1.1",
+    "@tensorflow/tfjs": "4.22.0",
+    "pako": "2.1.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-icons": "5.5.0",
+    "react-router-dom": "7.9.4",
     "three": "0.135.0",
-    "web-ifc": "0.0.46"
+    "three-stdlib": "2.36.0",
+    "web-ifc": "0.0.46",
+    "web-ifc-three": "0.0.125",
+    "web-ifc-viewer": "1.0.218",
+    "vite": "7.1.12",
+    "@vitejs/plugin-react": "5.0.4"
+  },
+  "overrides": {
+    "web-ifc-three": {
+      "web-ifc": "0.0.46"
+    },
+    "web-ifc-viewer": {
+      "three": "0.135.0",
+      "web-ifc": "0.0.46"
+    }
   }
-}
 }
