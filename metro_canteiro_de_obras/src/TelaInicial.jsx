@@ -16,7 +16,6 @@ import {
   MdHistory,
   MdArrowBack,
 } from "react-icons/md";
-import { createClient } from "@supabase/supabase-js";
 import {
   Scene,
   PerspectiveCamera,
@@ -31,71 +30,55 @@ import { IFCLoader } from "web-ifc-three/IFCLoader";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
 import "./TelaInicial.css";
 
+// URLs principais
 const SUPABASE_URL = "https://aedludqrnwntsqgyjjla.supabase.co";
-const SUPABASE_KEY =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFlZGx1ZHFybndudHNxZ3lqamxhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA3NTE2OTYsImV4cCI6MjA3NjMyNzY5Nn0.DV8BB3SLXxBKSZ6pMCbCUmnhkLaujehwPxJi4zvIbRU";
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+const NODE_COMPRESSOR_URL = "http://localhost:4000/compress";
 
 function TelaInicial() {
   const [selectedFile, setSelectedFile] = useState(null);
   const [status, setStatus] = useState("não iniciada");
   const [report, setReport] = useState(null);
-  const [historico, setHistorico] = useState([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [filtroData, setFiltroData] = useState("");
-  const [taxaLocal, setTaxaLocal] = useState(null);
 
-  const canvasRef = useRef(null);
   const viewerRef = useRef(null);
   const location = useLocation();
   const username = location.state?.username || "Usuário";
 
   // ============================
-  // 🧾 HISTÓRICO
-  // ============================
-  useEffect(() => {
-    const fetchHistorico = async () => {
-      const { data, error } = await supabase
-        .from("analises")
-        .select("*")
-        .eq("username", username)
-        .order("created_at", { ascending: false })
-        .limit(30);
-      if (!error && data) setHistorico(data);
-    };
-    fetchHistorico();
-  }, [report, username]);
-
-  // ============================
-  // 📤 UPLOAD + ANALISE
+  // 📤 UPLOAD + COMPRESSÃO
   // ============================
   const handleFileChange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
     setSelectedFile(file);
-    setStatus("enviando...");
+    setStatus("compactando...");
     setProgress(0);
 
     try {
-      const form = new FormData();
-      form.append("file", file);
-      form.append("username", username);
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("username", username);
 
-      const resp = await fetch(`${SUPABASE_URL}/functions/v1/-rapid-analyze`, {
+      const response = await fetch(NODE_COMPRESSOR_URL, {
         method: "POST",
-        headers: {
-          apikey: SUPABASE_KEY,
-          Authorization: `Bearer ${SUPABASE_KEY}`,
-        },
-        body: form,
+        body: formData,
       });
 
-      const result = await resp.json();
-      if (!resp.ok) throw new Error(result.error || "Erro na análise");
+      if (!response.ok) throw new Error("Falha na compressão");
+      const result = await response.json();
 
-      setReport(result);
+      setProgress(70);
+      setStatus("renderizando...");
+
+      setReport({
+        tipo: "modelo",
+        status: "Compactação concluída ✅",
+        descricao: "Arquivo compactado e salvo com sucesso no Supabase.",
+        url_ifc: result.url,
+      });
+
       setProgress(100);
       setStatus("concluída");
     } catch (err) {
@@ -110,10 +93,10 @@ function TelaInicial() {
   };
 
   // ============================
-  // 🧱 VIEWER 3D
+  // 🧱 VIEWER 3D COM FALLBACK
   // ============================
   useEffect(() => {
-    if (!report || (report.tipo !== "modelo" && !report.url_ifc)) return;
+    if (!report || (!report.url_ifc && !report.url)) return;
 
     const container = viewerRef.current;
     if (!container) return;
@@ -142,16 +125,13 @@ function TelaInicial() {
     const loader = new IFCLoader();
     loader.ifcManager.setWasmPath("/");
 
-    // ============================
-    // 🧩 Função segura com fallback .glb
-    // ============================
     async function safeLoadIFC(url_ifc, url_glb) {
       try {
         const head = await fetch(url_ifc, { method: "HEAD" });
         const size = parseInt(head.headers.get("content-length") || "0", 10);
         const sizeMB = size / 1024 / 1024;
 
-        console.log(`📦 IFC: ${sizeMB.toFixed(2)} MB`);
+        console.log(`📦 Tamanho IFC: ${sizeMB.toFixed(2)} MB`);
 
         if (sizeMB > 100 && url_glb) {
           console.log("⚡ Exibindo preview .glb");
@@ -178,17 +158,17 @@ function TelaInicial() {
               setReport((prev) => ({
                 ...prev,
                 tipo: "preview",
-                status: "Preview gerado ⚙️",
+                status: "Preview leve ⚙️",
                 descricao:
-                  "Arquivo original muito grande — exibindo versão leve (.glb) automaticamente.",
+                  "Modelo original muito grande — exibindo versão reduzida (.glb).",
               }));
             },
             undefined,
             (error) => {
-              console.error("Erro no preview:", error);
+              console.error("Erro preview:", error);
               setReport({
                 tipo: "erro",
-                status: "Falha ao exibir preview",
+                status: "Falha no preview .glb",
                 descricao: error.message,
               });
             }
@@ -196,7 +176,6 @@ function TelaInicial() {
           return;
         }
 
-        // Se o arquivo for leve, renderiza direto
         loader.load(url_ifc, (model) => {
           scene.add(model);
           const box = new Box3().setFromObject(model);
@@ -224,7 +203,7 @@ function TelaInicial() {
       }
     }
 
-safeLoadIFC(report.url_ifc || report.url, report.url_glb)
+    safeLoadIFC(report.url_ifc || report.url, report.url_glb);
 
     return () => {
       renderer.dispose();
@@ -233,10 +212,11 @@ safeLoadIFC(report.url_ifc || report.url, report.url_glb)
   }, [report]);
 
   // ============================
-  // 📊 RELATÓRIO
+  // 📊 RELATÓRIO VISUAL
   // ============================
   const renderReport = () => {
     if (!report) return null;
+
     if (report.tipo === "erro")
       return (
         <div className="report error">
@@ -253,20 +233,10 @@ safeLoadIFC(report.url_ifc || report.url, report.url_glb)
           <MdArrowBack /> Voltar
         </button>
 
-        <div className="tipo-arquivo">
-          Tipo: <strong>{report.tipo?.toUpperCase()}</strong>
-        </div>
         <p><strong>Status:</strong> {report.status}</p>
         {report.descricao && <p><strong>Descrição:</strong> {report.descricao}</p>}
 
-        {report.tipo === "preview" && (
-          <div className="alerta-info">
-            🔍 Este é um preview do modelo original (.ifc).  
-            O arquivo completo foi salvo em nuvem e pode ser aberto por ferramentas externas.
-          </div>
-        )}
-
-        {report.tipo === "modelo" && (
+        {(report.tipo === "modelo" || report.tipo === "preview") && (
           <div className="overlay-preview">
             <h4>🧱 Visualização 3D</h4>
             <div ref={viewerRef} className="ifc-viewer-container"></div>
@@ -279,16 +249,12 @@ safeLoadIFC(report.url_ifc || report.url, report.url_glb)
   // ============================
   // 🧭 RENDER PRINCIPAL
   // ============================
-  const historicoFiltrado = historico.filter(
-    (item) => !filtroData || item.created_at.startsWith(filtroData)
-  );
-
   return (
     <div className="tela-container">
       <div className="top-bar">
         <div className="status-container">
           {status === "não iniciada" && <MdNotStarted className="status-icon not-started" />}
-          {status.includes("analisando") && <MdAutorenew className="status-icon in-progress" />}
+          {status.includes("compactando") && <MdAutorenew className="status-icon in-progress" />}
           {status === "concluída" && <MdCheckCircle className="status-icon done" />}
           {status === "falhou" && <MdCancel className="status-icon failed" />}
           <span className="status-text">{status} {progress > 0 && `(${progress}%)`}</span>
@@ -298,29 +264,10 @@ safeLoadIFC(report.url_ifc || report.url, report.url_glb)
           <button className="toggle-btn" onClick={() => setSidebarOpen(!sidebarOpen)}>
             {sidebarOpen ? <MdClose /> : <MdMenu />}
           </button>
-          <button className="history-replay" title="Reproduzir histórico" onClick={() => window.location.reload()}>
-            <MdHistory />
-          </button>
+          <MdHistory />
           <span className="username">{username}</span>
           <FaUserCircle className="user-icon" />
         </div>
-      </div>
-
-      {/* SIDEBAR HISTÓRICO */}
-      <div className={`sidebar ${sidebarOpen ? "open" : ""}`}>
-        <h3>Histórico</h3>
-        <input
-          type="date"
-          className="filtro-data"
-          onChange={(e) => setFiltroData(e.target.value)}
-        />
-        {historicoFiltrado.map((item, i) => (
-          <div key={i} className="history-item" onClick={() => setReport(item)}>
-            <p><strong>{item.filename}</strong></p>
-            <small>{new Date(item.created_at).toLocaleString()}</small>
-            <p>Avanço: {item.progresso_fisico}%</p>
-          </div>
-        ))}
       </div>
 
       <div className="content">
@@ -330,12 +277,11 @@ safeLoadIFC(report.url_ifc || report.url, report.url_glb)
               <h2 className="welcome-text">Bem-vindo, {username}! 👷‍♂️</h2>
               <label htmlFor="file-upload" className="upload-area">
                 <FaFileUpload className="upload-icon" />
-                <p>Envie uma imagem ou modelo BIM (.ifc/.glb)</p>
+                <p>Envie um modelo BIM (.ifc / .glb) para compressão e visualização</p>
                 <input
                   id="file-upload"
                   type="file"
-                  accept="image/*,.ifc,.glb,.gltf"
-                  capture="environment"
+                  accept=".ifc,.glb,.gltf,image/*"
                   onChange={handleFileChange}
                   hidden
                 />

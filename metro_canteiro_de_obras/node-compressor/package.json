@@ -1,0 +1,21 @@
+{
+  "name": "compressor",
+  "version": "1.0.0",
+  "description": "",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "overrides": {},
+  "dependencies": {
+    "@supabase/supabase-js": "2.43.5",
+    "express": "^4.19.2",
+    "cors": "^2.8.5",
+    "multer": "^2.0.0"
+  },
+  "devDependencies": {}
+}
