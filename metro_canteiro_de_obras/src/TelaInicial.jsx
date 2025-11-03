@@ -5,6 +5,9 @@ import {
   FaFileUpload,
   FaFileAlt,
   FaExclamationTriangle,
+  FaClock,
+  FaImage,
+  FaCube,
 } from "react-icons/fa";
 import {
   MdNotStarted,
@@ -28,11 +31,21 @@ import {
 } from "three";
 import { IFCLoader } from "web-ifc-three/IFCLoader";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
+import { createClient } from "@supabase/supabase-js";
 import "./TelaInicial.css";
 
-// URLs principais
+// ============================
+// 🌐 URLs e CONFIGURAÇÕES
+// ============================
 const SUPABASE_URL = "https://aedludqrnwntsqgyjjla.supabase.co";
-const NODE_COMPRESSOR_URL = "http://localhost:4000/compress";
+const SUPABASE_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFlZGx1ZHFybndudHNxZ3lqamxhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA3NTE2OTYsImV4cCI6MjA3NjMyNzY5Nn0.DV8BB3SLXxBKSZ6pMCbCUmnhkLaujehwPxJi4zvIbRU";
+const BUCKET = "canteiro de obras";
+
+const NODE_RENDER_URL = "https://teu-render.onrender.com/compress"; // ⚙️ backend de compressão
+const ANALYZE_URL = "https://aedludqrnwntsqgyjjla.functions.supabase.co/rapid-analyze"; // ☁️ análise
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 function TelaInicial() {
   const [selectedFile, setSelectedFile] = useState(null);
@@ -40,47 +53,82 @@ function TelaInicial() {
   const [report, setReport] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [historico, setHistorico] = useState([]);
+  const [viewingHistoryItem, setViewingHistoryItem] = useState(null);
 
   const viewerRef = useRef(null);
   const location = useLocation();
   const username = location.state?.username || "Usuário";
 
   // ============================
-  // 📤 UPLOAD + COMPRESSÃO
+  // 📜 CARREGAR HISTÓRICO DO USUÁRIO
+  // ============================
+  const carregarHistorico = async () => {
+    try {
+      const { data, error } = await supabase.storage.from(BUCKET).list(`arquivos/${username}`, {
+        limit: 100,
+        sortBy: { column: "created_at", order: "desc" },
+      });
+      if (error) throw error;
+
+      // adiciona URLs públicas
+      const items = data
+        .filter((f) => f.name)
+        .map((f) => {
+          const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(`arquivos/${username}/${f.name}`);
+          const ext = f.name.split(".").pop().toLowerCase();
+          const tipo = ["jpg", "jpeg", "png", "gif", "bmp", "webp"].includes(ext)
+            ? "imagem"
+            : "modelo";
+          return {
+            nome: f.name,
+            tipo,
+            data: new Date(f.created_at || Date.now()).toLocaleString(),
+            url: urlData.publicUrl,
+          };
+        });
+
+      setHistorico(items);
+    } catch (err) {
+      console.error("❌ Erro ao carregar histórico:", err);
+    }
+  };
+
+  useEffect(() => {
+    carregarHistorico();
+  }, []);
+
+  // ============================
+  // 📤 UPLOAD + ANÁLISE AUTOMÁTICA
   // ============================
   const handleFileChange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
     setSelectedFile(file);
-    setStatus("compactando...");
-    setProgress(0);
+    setStatus("processando...");
+    setProgress(10);
+
+    const ext = file.name.split(".").pop().toLowerCase();
+    const isImage = ["jpg", "jpeg", "png", "bmp", "gif", "webp"].includes(ext);
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("username", username);
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("username", username);
+      const endpoint = isImage ? ANALYZE_URL : NODE_RENDER_URL;
+      const response = await fetch(endpoint, { method: "POST", body: formData });
+      if (!response.ok) throw new Error("Falha no processamento");
 
-      const response = await fetch(NODE_COMPRESSOR_URL, {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!response.ok) throw new Error("Falha na compressão");
       const result = await response.json();
+      console.log("📥 Retorno:", result);
 
-      setProgress(70);
-      setStatus("renderizando...");
-
-      setReport({
-        tipo: "modelo",
-        status: "Compactação concluída ✅",
-        descricao: "Arquivo compactado e salvo com sucesso no Supabase.",
-        url_ifc: result.url,
-      });
-
+      setReport(result);
       setProgress(100);
       setStatus("concluída");
+
+      // recarregar histórico
+      setTimeout(() => carregarHistorico(), 3000);
     } catch (err) {
       console.error("❌ Erro:", err);
       setReport({
@@ -93,10 +141,11 @@ function TelaInicial() {
   };
 
   // ============================
-  // 🧱 VIEWER 3D COM FALLBACK
+  // 🧱 VIEWER 3D (para modelos)
   // ============================
   useEffect(() => {
-    if (!report || (!report.url_ifc && !report.url)) return;
+    const item = viewingHistoryItem || report;
+    if (!item || item.tipo === "imagem" || !item.url) return;
 
     const container = viewerRef.current;
     if (!container) return;
@@ -125,126 +174,93 @@ function TelaInicial() {
     const loader = new IFCLoader();
     loader.ifcManager.setWasmPath("/");
 
-    async function safeLoadIFC(url_ifc, url_glb) {
-      try {
-        const head = await fetch(url_ifc, { method: "HEAD" });
-        const size = parseInt(head.headers.get("content-length") || "0", 10);
-        const sizeMB = size / 1024 / 1024;
+    loader.load(item.url, (model) => {
+      scene.add(model);
+      const box = new Box3().setFromObject(model);
+      const center = box.getCenter(new Vector3());
+      const size = box.getSize(new Vector3()).length();
+      const fit = size / (2 * Math.tan((Math.PI * camera.fov) / 360));
+      controls.target.copy(center);
+      camera.position.copy(center.clone().add(new Vector3(fit, fit, fit)));
+      camera.lookAt(center);
 
-        console.log(`📦 Tamanho IFC: ${sizeMB.toFixed(2)} MB`);
-
-        if (sizeMB > 100 && url_glb) {
-          console.log("⚡ Exibindo preview .glb");
-          loader.load(
-            url_glb,
-            (model) => {
-              scene.add(model);
-              const box = new Box3().setFromObject(model);
-              const center = box.getCenter(new Vector3());
-              const size = box.getSize(new Vector3()).length();
-              const fit = size / (2 * Math.tan((Math.PI * camera.fov) / 360));
-
-              controls.target.copy(center);
-              camera.position.copy(center.clone().add(new Vector3(fit, fit, fit)));
-              camera.lookAt(center);
-
-              const animate = () => {
-                requestAnimationFrame(animate);
-                controls.update();
-                renderer.render(scene, camera);
-              };
-              animate();
-
-              setReport((prev) => ({
-                ...prev,
-                tipo: "preview",
-                status: "Preview leve ⚙️",
-                descricao:
-                  "Modelo original muito grande — exibindo versão reduzida (.glb).",
-              }));
-            },
-            undefined,
-            (error) => {
-              console.error("Erro preview:", error);
-              setReport({
-                tipo: "erro",
-                status: "Falha no preview .glb",
-                descricao: error.message,
-              });
-            }
-          );
-          return;
-        }
-
-        loader.load(url_ifc, (model) => {
-          scene.add(model);
-          const box = new Box3().setFromObject(model);
-          const center = box.getCenter(new Vector3());
-          const size = box.getSize(new Vector3()).length();
-          const fit = size / (2 * Math.tan((Math.PI * camera.fov) / 360));
-          controls.target.copy(center);
-          camera.position.copy(center.clone().add(new Vector3(fit, fit, fit)));
-          camera.lookAt(center);
-
-          const animate = () => {
-            requestAnimationFrame(animate);
-            controls.update();
-            renderer.render(scene, camera);
-          };
-          animate();
-        });
-      } catch (err) {
-        console.error("⚠️ Falha ao carregar IFC:", err);
-        setReport({
-          tipo: "erro",
-          status: "Falha ao renderizar modelo",
-          descricao: err.message,
-        });
-      }
-    }
-
-    safeLoadIFC(report.url_ifc || report.url, report.url_glb);
+      const animate = () => {
+        requestAnimationFrame(animate);
+        controls.update();
+        renderer.render(scene, camera);
+      };
+      animate();
+    });
 
     return () => {
       renderer.dispose();
       container.innerHTML = "";
     };
-  }, [report]);
+  }, [report, viewingHistoryItem]);
 
   // ============================
   // 📊 RELATÓRIO VISUAL
   // ============================
   const renderReport = () => {
-    if (!report) return null;
+    const item = viewingHistoryItem || report;
+    if (!item) return null;
 
-    if (report.tipo === "erro")
+    if (item.tipo === "erro")
       return (
         <div className="report error">
-          <FaExclamationTriangle /> {report.descricao}
+          <FaExclamationTriangle /> {item.descricao}
           <button className="btn-voltar" onClick={() => setReport(null)}>
             <MdArrowBack /> Voltar
           </button>
         </div>
       );
 
+    if (item.tipo === "imagem")
+      return (
+        <div className="report success">
+          <button className="btn-voltar" onClick={() => { setReport(null); setViewingHistoryItem(null); }}>
+            <MdArrowBack /> Voltar
+          </button>
+          <p><strong>Status:</strong> {item.status}</p>
+          <img src={item.url} alt="analisada" style={{ maxWidth: "300px", borderRadius: "10px" }} />
+        </div>
+      );
+
     return (
       <div className="report success">
-        <button className="btn-voltar" onClick={() => setReport(null)}>
+        <button className="btn-voltar" onClick={() => { setReport(null); setViewingHistoryItem(null); }}>
           <MdArrowBack /> Voltar
         </button>
-
-        <p><strong>Status:</strong> {report.status}</p>
-        {report.descricao && <p><strong>Descrição:</strong> {report.descricao}</p>}
-
-        {(report.tipo === "modelo" || report.tipo === "preview") && (
-          <div className="overlay-preview">
-            <h4>🧱 Visualização 3D</h4>
-            <div ref={viewerRef} className="ifc-viewer-container"></div>
-          </div>
-        )}
+        <p><strong>Status:</strong> {item.status}</p>
+        <div className="overlay-preview">
+          <h4>🧱 Visualização 3D</h4>
+          <div ref={viewerRef} className="ifc-viewer-container"></div>
+        </div>
       </div>
     );
   };
+
+  // ============================
+  // 🕓 HISTÓRICO VISUAL
+  // ============================
+  const renderHistorico = () => (
+    <div className="historico-container">
+      <h3><FaClock /> Histórico de uploads</h3>
+      {historico.length === 0 ? (
+        <p>Nenhum arquivo encontrado.</p>
+      ) : (
+        <ul className="historico-lista">
+          {historico.map((item, i) => (
+            <li key={i} onClick={() => setViewingHistoryItem(item)} className="historico-item">
+              {item.tipo === "imagem" ? <FaImage /> : <FaCube />}{" "}
+              <strong>{item.nome}</strong>
+              <span className="data">{item.data}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 
   // ============================
   // 🧭 RENDER PRINCIPAL
@@ -254,17 +270,17 @@ function TelaInicial() {
       <div className="top-bar">
         <div className="status-container">
           {status === "não iniciada" && <MdNotStarted className="status-icon not-started" />}
-          {status.includes("compactando") && <MdAutorenew className="status-icon in-progress" />}
+          {status.includes("processando") && <MdAutorenew className="status-icon in-progress" />}
           {status === "concluída" && <MdCheckCircle className="status-icon done" />}
           {status === "falhou" && <MdCancel className="status-icon failed" />}
-          <span className="status-text">{status} {progress > 0 && `(${progress}%)`}</span>
+          <span className="status-text">{status}</span>
         </div>
 
         <div className="user-section">
           <button className="toggle-btn" onClick={() => setSidebarOpen(!sidebarOpen)}>
             {sidebarOpen ? <MdClose /> : <MdMenu />}
           </button>
-          <MdHistory />
+          <MdHistory onClick={() => carregarHistorico()} />
           <span className="username">{username}</span>
           <FaUserCircle className="user-icon" />
         </div>
@@ -272,21 +288,22 @@ function TelaInicial() {
 
       <div className="content">
         <div className="content-inner">
-          {!report && (
+          {sidebarOpen ? (
+            renderHistorico()
+          ) : !report && !viewingHistoryItem ? (
             <>
               <h2 className="welcome-text">Bem-vindo, {username}! 👷‍♂️</h2>
               <label htmlFor="file-upload" className="upload-area">
                 <FaFileUpload className="upload-icon" />
-                <p>Envie um modelo BIM (.ifc / .glb) para compressão e visualização</p>
+                <p>Envie uma imagem ou modelo BIM para análise</p>
                 <input
                   id="file-upload"
                   type="file"
-                  accept=".ifc,.glb,.gltf,image/*"
+                  accept=".ifc,.glb,.gltf,.stl,.jpg,.jpeg,.png,.gif,.bmp,.webp"
                   onChange={handleFileChange}
                   hidden
                 />
               </label>
-
               {selectedFile && (
                 <div className="file-display">
                   <FaFileAlt className="file-icon" />
@@ -294,9 +311,9 @@ function TelaInicial() {
                 </div>
               )}
             </>
+          ) : (
+            renderReport()
           )}
-
-          {renderReport()}
         </div>
       </div>
     </div>
