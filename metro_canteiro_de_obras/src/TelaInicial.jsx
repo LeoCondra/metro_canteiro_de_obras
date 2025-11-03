@@ -31,14 +31,10 @@ import { IFCLoader } from "web-ifc-three/IFCLoader";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
 import "./TelaInicial.css";
 
-// ============================
-// 🔧 SUPABASE CONFIG
-// ============================
 const SUPABASE_URL = "https://aedludqrnwntsqgyjjla.supabase.co";
-const SUPABASE_ANON_KEY =
+const SUPABASE_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFlZGx1ZHFybndudHNxZ3lqamxhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA3NTE2OTYsImV4cCI6MjA3NjMyNzY5Nn0.DV8BB3SLXxBKSZ6pMCbCUmnhkLaujehwPxJi4zvIbRU";
-const BUCKET_NAME = "canteiro de obras";
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 function TelaInicial() {
   const [selectedFile, setSelectedFile] = useState(null);
@@ -49,6 +45,7 @@ function TelaInicial() {
   const [progress, setProgress] = useState(0);
   const [filtroData, setFiltroData] = useState("");
   const [taxaLocal, setTaxaLocal] = useState(null);
+
   const canvasRef = useRef(null);
   const viewerRef = useRef(null);
   const location = useLocation();
@@ -71,7 +68,7 @@ function TelaInicial() {
   }, [report, username]);
 
   // ============================
-  // 📤 UPLOAD E ANÁLISE
+  // 📤 UPLOAD + ANALISE
   // ============================
   const handleFileChange = async (e) => {
     const file = e.target.files[0];
@@ -81,109 +78,43 @@ function TelaInicial() {
     setStatus("enviando...");
     setProgress(0);
 
-    const uploadName = `${Date.now()}-${file.name}`;
-    const uploadPath = `arquivos/${uploadName}`;
-    const { data: signedData, error: signedError } = await supabase.storage
-      .from(BUCKET_NAME)
-      .createSignedUploadUrl(uploadPath);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      form.append("username", username);
 
-    if (signedError) {
+      const resp = await fetch(`${SUPABASE_URL}/functions/v1/-rapid-analyze`, {
+        method: "POST",
+        headers: {
+          apikey: SUPABASE_KEY,
+          Authorization: `Bearer ${SUPABASE_KEY}`,
+        },
+        body: form,
+      });
+
+      const result = await resp.json();
+      if (!resp.ok) throw new Error(result.error || "Erro na análise");
+
+      setReport(result);
+      setProgress(100);
+      setStatus("concluída");
+    } catch (err) {
+      console.error("❌ Erro:", err);
+      setReport({
+        tipo: "erro",
+        status: "Falha no processamento",
+        descricao: err.message,
+      });
       setStatus("falhou");
-      console.error("Erro ao criar URL de upload:", signedError);
-      return;
     }
-
-    const xhr = new XMLHttpRequest();
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable) {
-        setProgress(Math.round((e.loaded / e.total) * 100));
-      }
-    };
-
-    xhr.onload = async () => {
-      setStatus("analisando...");
-      try {
-        const response = await fetch(`${SUPABASE_URL}/functions/v1/-rapid-analyze`, {
-          method: "POST",
-          mode: "cors",
-          headers: {
-            apikey: SUPABASE_ANON_KEY,
-            Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-          },
-          body: (() => {
-            const formData = new FormData();
-            formData.append("file", file, file.name);
-            formData.append("username", username);
-            return formData;
-          })(),
-        });
-
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.descricao || "Erro na análise");
-
-        setReport(result);
-        setStatus("concluída");
-        setProgress(100);
-      } catch (err) {
-        console.error(err);
-        setReport({
-          tipo: "erro",
-          status: "Falha na análise",
-          descricao: err.message,
-        });
-        setStatus("falhou");
-      }
-    };
-
-    xhr.onerror = () => setStatus("falhou");
-    xhr.open("PUT", signedData.signedUrl);
-    xhr.send(file);
   };
-
-  // ============================
-  // ⚙️ COMPARAÇÃO LOCAL MODELO × IMAGEM
-  // ============================
-  useEffect(() => {
-    if (!report?.detections || report.tipo !== "imagem") return;
-    const ifcElements = ["Wall", "Slab", "Column"];
-    const matches = ifcElements.filter((el) =>
-      report.detections?.some((d) =>
-        d.nome?.toLowerCase().includes(el.toLowerCase())
-      )
-    );
-    const taxa = Math.round((matches.length / ifcElements.length) * 100);
-    setTaxaLocal(taxa);
-  }, [report]);
-
-  // ============================
-  // 🖼️ OVERLAY 2D
-  // ============================
-  useEffect(() => {
-    if (!report?.overlay || report.overlay.length === 0) return;
-    const canvas = canvasRef.current;
-    const ctx = canvas?.getContext("2d");
-    if (!canvas || !ctx) return;
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = "#f9fafb";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    report.overlay.forEach((det) => {
-      const { xMin, yMin, xMax, yMax } = det.box;
-      ctx.strokeStyle = det.cor || "#2563eb";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(xMin, yMin, xMax - xMin, yMax - yMin);
-      ctx.fillStyle = det.cor || "#2563eb";
-      ctx.font = "12px Arial";
-      ctx.fillText(det.nome, xMin + 5, yMin - 5);
-    });
-  }, [report]);
 
   // ============================
   // 🧱 VIEWER 3D
   // ============================
   useEffect(() => {
-    if (!report?.url || report.tipo !== "modelo") return;
+    if (!report || (report.tipo !== "modelo" && !report.url_ifc)) return;
+
     const container = viewerRef.current;
     if (!container) return;
     container.innerHTML = "";
@@ -211,45 +142,98 @@ function TelaInicial() {
     const loader = new IFCLoader();
     loader.ifcManager.setWasmPath("/");
 
-    loader.load(
-      report.url,
-      (model) => {
-        scene.add(model);
-        const box = new Box3().setFromObject(model);
-        const center = box.getCenter(new Vector3());
-        const size = box.getSize(new Vector3()).length();
-        const fit = size / (2 * Math.tan((Math.PI * camera.fov) / 360));
+    // ============================
+    // 🧩 Função segura com fallback .glb
+    // ============================
+    async function safeLoadIFC(url_ifc, url_glb) {
+      try {
+        const head = await fetch(url_ifc, { method: "HEAD" });
+        const size = parseInt(head.headers.get("content-length") || "0", 10);
+        const sizeMB = size / 1024 / 1024;
 
-        controls.target.copy(center);
-        camera.position.copy(center.clone().add(new Vector3(fit, fit, fit)));
-        camera.lookAt(center);
+        console.log(`📦 IFC: ${sizeMB.toFixed(2)} MB`);
 
-        const animate = () => {
-          requestAnimationFrame(animate);
-          controls.update();
-          renderer.render(scene, camera);
-        };
-        animate();
-      },
-      undefined,
-      (error) => {
-        console.error("❌ Erro IFC:", error);
+        if (sizeMB > 100 && url_glb) {
+          console.log("⚡ Exibindo preview .glb");
+          loader.load(
+            url_glb,
+            (model) => {
+              scene.add(model);
+              const box = new Box3().setFromObject(model);
+              const center = box.getCenter(new Vector3());
+              const size = box.getSize(new Vector3()).length();
+              const fit = size / (2 * Math.tan((Math.PI * camera.fov) / 360));
+
+              controls.target.copy(center);
+              camera.position.copy(center.clone().add(new Vector3(fit, fit, fit)));
+              camera.lookAt(center);
+
+              const animate = () => {
+                requestAnimationFrame(animate);
+                controls.update();
+                renderer.render(scene, camera);
+              };
+              animate();
+
+              setReport((prev) => ({
+                ...prev,
+                tipo: "preview",
+                status: "Preview gerado ⚙️",
+                descricao:
+                  "Arquivo original muito grande — exibindo versão leve (.glb) automaticamente.",
+              }));
+            },
+            undefined,
+            (error) => {
+              console.error("Erro no preview:", error);
+              setReport({
+                tipo: "erro",
+                status: "Falha ao exibir preview",
+                descricao: error.message,
+              });
+            }
+          );
+          return;
+        }
+
+        // Se o arquivo for leve, renderiza direto
+        loader.load(url_ifc, (model) => {
+          scene.add(model);
+          const box = new Box3().setFromObject(model);
+          const center = box.getCenter(new Vector3());
+          const size = box.getSize(new Vector3()).length();
+          const fit = size / (2 * Math.tan((Math.PI * camera.fov) / 360));
+          controls.target.copy(center);
+          camera.position.copy(center.clone().add(new Vector3(fit, fit, fit)));
+          camera.lookAt(center);
+
+          const animate = () => {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+          };
+          animate();
+        });
+      } catch (err) {
+        console.error("⚠️ Falha ao carregar IFC:", err);
         setReport({
           tipo: "erro",
-          status: "Falha na renderização IFC",
-          descricao: error.message,
+          status: "Falha ao renderizar modelo",
+          descricao: err.message,
         });
       }
-    );
+    }
+
+safeLoadIFC(report.url_ifc || report.url, report.url_glb)
 
     return () => {
       renderer.dispose();
       container.innerHTML = "";
     };
-  }, [report?.url]);
+  }, [report]);
 
   // ============================
-  // 📊 RELATÓRIO FINAL
+  // 📊 RELATÓRIO
   // ============================
   const renderReport = () => {
     if (!report) return null;
@@ -275,30 +259,13 @@ function TelaInicial() {
         <p><strong>Status:</strong> {report.status}</p>
         {report.descricao && <p><strong>Descrição:</strong> {report.descricao}</p>}
 
-        {taxaLocal !== null && (
-          <div className="comparacao-local">
-            <h4>🧩 Comparação modelo × imagem</h4>
-            <p>Compatibilidade: {taxaLocal}%</p>
-            {taxaLocal < 70 && (
-              <div className="alerta">
-                ⚠️ Inconsistência detectada: compatibilidade abaixo do ideal.
-              </div>
-            )}
+        {report.tipo === "preview" && (
+          <div className="alerta-info">
+            🔍 Este é um preview do modelo original (.ifc).  
+            O arquivo completo foi salvo em nuvem e pode ser aberto por ferramentas externas.
           </div>
         )}
 
-        {report.simulacao && (
-          <div className="progress-section">
-            <h4>📊 {report.simulacao.mensagem}</h4>
-            <p>{report.simulacao.progressoEstimado}%</p>
-          </div>
-        )}
-        {report.overlay && report.overlay.length > 0 && (
-          <div className="overlay-preview">
-            <h4>🔹 Visualização</h4>
-            <canvas ref={canvasRef} width={600} height={400}></canvas>
-          </div>
-        )}
         {report.tipo === "modelo" && (
           <div className="overlay-preview">
             <h4>🧱 Visualização 3D</h4>
@@ -363,11 +330,11 @@ function TelaInicial() {
               <h2 className="welcome-text">Bem-vindo, {username}! 👷‍♂️</h2>
               <label htmlFor="file-upload" className="upload-area">
                 <FaFileUpload className="upload-icon" />
-                <p>Envie uma imagem ou modelo BIM (.ifc/.glb) para análise</p>
+                <p>Envie uma imagem ou modelo BIM (.ifc/.glb)</p>
                 <input
                   id="file-upload"
                   type="file"
-                  accept="image/*,.ifc,.bim,.obj,.glb,.gltf,.stl"
+                  accept="image/*,.ifc,.glb,.gltf"
                   capture="environment"
                   onChange={handleFileChange}
                   hidden

@@ -59,10 +59,13 @@ html, body, #root {
 .status-icon.in-progress { color: #facc15; animation: spin 2s linear infinite; }
 .status-icon.done { color: #22c55e; }
 .status-icon.failed { color: #ef4444; }
+.status-icon.compressing { color: #60a5fa; animation: pulse 1.4s infinite; }
 
 .status-text {
   font-size: 1rem;
   font-weight: 500;
+  text-transform: capitalize;
+  letter-spacing: 0.3px;
 }
 
 .user-section {
@@ -189,7 +192,7 @@ html, body, #root {
 }
 
 /* ========================= */
-/* UPLOAD                    */
+/* UPLOAD + PROGRESSO        */
 /* ========================= */
 .upload-area {
   border: 2px dashed #003da5;
@@ -233,6 +236,31 @@ html, body, #root {
 .file-icon {
   font-size: 1.2rem;
   color: #003da5;
+}
+
+/* Barra de progresso */
+.progress-bar {
+  width: 100%;
+  background: #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-top: 0.8rem;
+  height: 10px;
+  position: relative;
+}
+
+.progress-bar-fill {
+  background: linear-gradient(90deg, #60a5fa, #2563eb);
+  height: 100%;
+  width: 0%;
+  border-radius: 8px;
+  transition: width 0.3s ease;
+  animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: -200px 0; }
+  100% { background-position: 200px 0; }
 }
 
 /* ========================= */
@@ -385,6 +413,11 @@ html, body, #root {
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.1); }
 }
 
 @keyframes fadeIn {
