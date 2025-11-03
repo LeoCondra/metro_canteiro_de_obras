@@ -8,21 +8,22 @@ import { createClient } from "@supabase/supabase-js";
 const app = express();
 
 // ============================
-// 🌐 CORS CONFIG
+// 🌐 CORS liberado
 // ============================
 app.use(
   cors({
     origin: [
-      "https://metro-canteiro-de-obras.onrender.com", // ✅ domínio do front no Render
-      "http://localhost:5173", // ✅ para testes locais
+      "https://metro-canteiro-de-obras.onrender.com",
+      "http://localhost:5173",
     ],
     methods: ["GET", "POST", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "apikey"],
   })
 );
 app.use(express.json());
 
 // ============================
-// 🗂️ MULTER (upload temporário)
+// 🗂️ UPLOAD TEMPORÁRIO
 // ============================
 const upload = multer({ dest: "uploads/" });
 
@@ -37,12 +38,14 @@ const BUCKET = "canteiro de obras";
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // ============================
-// 🚀 ENDPOINT DE COMPRESSÃO
+// 🚀 ENDPOINT /compress
 // ============================
 app.post("/compress", upload.single("file"), async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ success: false, message: "Nenhum arquivo enviado." });
+      return res
+        .status(400)
+        .json({ success: false, message: "Nenhum arquivo enviado." });
     }
 
     const filePath = req.file.path;
@@ -52,9 +55,9 @@ app.post("/compress", upload.single("file"), async (req, res) => {
     const username = req.body.username || "usuario";
     const compressedName = `${Date.now()}-${req.file.originalname}.gz`;
 
-    console.log(`📦 Compactando arquivo: ${req.file.originalname} (${req.file.size} bytes)`);
+    console.log(`📦 Compactando arquivo: ${req.file.originalname}`);
 
-    // Upload para o Supabase Storage
+    // Upload para Supabase
     const { error: uploadError } = await supabase.storage
       .from(BUCKET)
       .upload(`compressed/${username}/${compressedName}`, compressedBuffer, {
@@ -68,8 +71,7 @@ app.post("/compress", upload.single("file"), async (req, res) => {
       .from(BUCKET)
       .getPublicUrl(`compressed/${username}/${compressedName}`);
 
-    fs.unlink(filePath, () => {}); // remove arquivo local sem travar
-
+    fs.unlink(filePath, () => {}); // limpa temporário
     console.log(`✅ Upload concluído: ${publicData.publicUrl}`);
 
     res.json({
@@ -89,12 +91,12 @@ app.post("/compress", upload.single("file"), async (req, res) => {
 // ============================
 // 🧠 HEALTH CHECK
 // ============================
-app.get("/", (req, res) => {
-  res.send("✅ Node Compressor ativo e pronto!");
-});
+app.get("/", (req, res) => res.send("✅ Node Compressor ativo e pronto!"));
 
 // ============================
 // 🚀 START SERVER
 // ============================
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`🚀 Node compressor rodando na porta ${PORT}`));
+app.listen(PORT, () =>
+  console.log(`🚀 Node compressor rodando na porta ${PORT}`)
+);

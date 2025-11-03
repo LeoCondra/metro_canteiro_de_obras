@@ -1,23 +1,33 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-// ⚙️ Configuração completa para produção no Render
+// 🚀 Configuração definitiva
 export default defineConfig({
   plugins: [react()],
-  server: {
-    port: 5173, // porta local padrão
-    host: true, // permite acesso externo (útil pra testes LAN)
-  },
   preview: {
-    port: 4173, // porta usada no comando "vite preview"
-    host: true,
+    port: 4173,
     allowedHosts: [
-      "metro-canteiro-de-obras.onrender.com",
-       "node-compressor.onrender.com", // ✅ domínio público do Render liberado
+      "metro-canteiro-de-obras.onrender.com", // teu front
+      "node-compressor.onrender.com",          // teu backend no Render
     ],
   },
+  server: {
+    port: 5173,
+    allowedHosts: [
+      "metro-canteiro-de-obras.onrender.com",
+      "node-compressor.onrender.com",
+    ],
+    cors: {
+      origin: [
+        "https://metro-canteiro-de-obras.onrender.com",
+        "https://node-compressor.onrender.com",
+        "http://localhost:5173",
+      ],
+      methods: ["GET", "POST", "OPTIONS"],
+      allowedHeaders: ["Content-Type", "Authorization", "apikey"],
+    },
+  },
   build: {
-    outDir: "dist",
-    chunkSizeWarningLimit: 1600, // evita warnings de bundles grandes (three.js)
+    chunkSizeWarningLimit: 1600, // evita warning de bundle grande
   },
 });
