@@ -60,6 +60,6 @@ app.post("/compress", upload.single("file"), async (req, res) => {
   }
 });
 
-app.listen(6000, () =>
-  console.log("🚀 Node compressor rodando na porta 6000")
+app.listen(10000, () =>
+  console.log("🚀 Node compressor rodando na porta 10000")
 );

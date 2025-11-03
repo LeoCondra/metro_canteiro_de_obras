@@ -43,7 +43,7 @@ const SUPABASE_KEY =
 const BUCKET = "canteiro de obras";
 
 const NODE_RENDER_URL = "https://teu-render.onrender.com/compress"; // ⚙️ backend de compressão
-const ANALYZE_URL = "https://aedludqrnwntsqgyjjla.functions.supabase.co/rapid-analyze"; // ☁️ análise
+const ANALYZE_URL = "https://aedludqrnwntsqgyjjla.functions.supabase.co/-rapid-analyze"; // ☁️ análise
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
