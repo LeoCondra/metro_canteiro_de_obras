@@ -6,11 +6,29 @@ import fs from "fs";
 import { createClient } from "@supabase/supabase-js";
 
 const app = express();
-app.use(cors());
+
+// ============================
+// 🌐 CORS CONFIG
+// ============================
+app.use(
+  cors({
+    origin: [
+      "https://metro-canteiro-de-obras.onrender.com", // ✅ domínio do front no Render
+      "http://localhost:5173", // ✅ para testes locais
+    ],
+    methods: ["GET", "POST", "OPTIONS"],
+  })
+);
 app.use(express.json());
 
+// ============================
+// 🗂️ MULTER (upload temporário)
+// ============================
 const upload = multer({ dest: "uploads/" });
 
+// ============================
+// 🔧 SUPABASE CONFIG
+// ============================
 const SUPABASE_URL = "https://aedludqrnwntsqgyjjla.supabase.co";
 const SUPABASE_KEY =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFlZGx1ZHFybndudHNxZ3lqamxhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA3NTE2OTYsImV4cCI6MjA3NjMyNzY5Nn0.DV8BB3SLXxBKSZ6pMCbCUmnhkLaujehwPxJi4zvIbRU";
@@ -23,6 +41,10 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 // ============================
 app.post("/compress", upload.single("file"), async (req, res) => {
   try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: "Nenhum arquivo enviado." });
+    }
+
     const filePath = req.file.path;
     const fileBuffer = fs.readFileSync(filePath);
     const compressedBuffer = zlib.gzipSync(fileBuffer);
@@ -30,25 +52,29 @@ app.post("/compress", upload.single("file"), async (req, res) => {
     const username = req.body.username || "usuario";
     const compressedName = `${Date.now()}-${req.file.originalname}.gz`;
 
+    console.log(`📦 Compactando arquivo: ${req.file.originalname} (${req.file.size} bytes)`);
+
     // Upload para o Supabase Storage
-    const { error } = await supabase.storage
+    const { error: uploadError } = await supabase.storage
       .from(BUCKET)
       .upload(`compressed/${username}/${compressedName}`, compressedBuffer, {
         contentType: "application/gzip",
         upsert: true,
       });
 
-    if (error) throw error;
+    if (uploadError) throw uploadError;
 
-    const { data } = supabase.storage
+    const { data: publicData } = supabase.storage
       .from(BUCKET)
       .getPublicUrl(`compressed/${username}/${compressedName}`);
 
-    fs.unlinkSync(filePath); // limpar arquivo local
+    fs.unlink(filePath, () => {}); // remove arquivo local sem travar
+
+    console.log(`✅ Upload concluído: ${publicData.publicUrl}`);
 
     res.json({
       success: true,
-      url: data.publicUrl,
+      url: publicData.publicUrl,
       fileName: compressedName,
     });
   } catch (err) {
@@ -60,6 +86,15 @@ app.post("/compress", upload.single("file"), async (req, res) => {
   }
 });
 
-app.listen(10000, () =>
-  console.log("🚀 Node compressor rodando na porta 10000")
-);
+// ============================
+// 🧠 HEALTH CHECK
+// ============================
+app.get("/", (req, res) => {
+  res.send("✅ Node Compressor ativo e pronto!");
+});
+
+// ============================
+// 🚀 START SERVER
+// ============================
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => console.log(`🚀 Node compressor rodando na porta ${PORT}`));
