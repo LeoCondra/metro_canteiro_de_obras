@@ -98,6 +98,4 @@ app.get("/", (req, res) => {
 // 🚀 START SERVER
 // ============================
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`🚀 Node compressor rodando na porta ${PORT}`);
-});
+app.listen(PORT, () => console.log(`🚀 Node compressor rodando na porta ${PORT}`));
