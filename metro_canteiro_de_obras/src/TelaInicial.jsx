@@ -43,7 +43,8 @@ const SUPABASE_KEY =
 const BUCKET = "canteiro de obras";
 
 // 🔗 Coloca o domínio do backend Node hospedado no Render:
-const NODE_RENDER_URL = "https://node-compressor.onrender.com/compress";
+const NODE_RENDER_URL = "https://metro-canteiro-de-obras.onrender.com/compress";
+;
 
 // 🔗 URL exata da edge function Supabase:
 const ANALYZE_URL =
