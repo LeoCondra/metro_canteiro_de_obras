@@ -151,37 +151,39 @@ function TelaInicial() {
   // 🧱 VISUALIZAÇÃO 3D
   // ============================
   useEffect(() => {
-    const item = viewingHistoryItem || report;
-    if (!item || item.tipo === "imagem" || !item.url) return;
+  const item = viewingHistoryItem || report;
+  if (!item || item.tipo === "imagem" || !item.url) return;
 
-    const container = viewerRef.current;
-    if (!container) return;
-    container.innerHTML = "";
+  const container = viewerRef.current;
+  if (!container) return;
+  container.innerHTML = "";
 
-    const scene = new Scene();
-    scene.background = new Color(0xf3f4f6);
-    const width = container.clientWidth || 600;
-    const height = 400;
+  const scene = new Scene();
+  scene.background = new Color(0xf3f4f6);
+  const width = container.clientWidth || 600;
+  const height = 400;
 
-    const camera = new PerspectiveCamera(60, width / height, 0.1, 1000);
-    camera.position.set(3, 3, 3);
+  const camera = new PerspectiveCamera(60, width / height, 0.1, 1000);
+  camera.position.set(3, 3, 3);
 
-    const renderer = new WebGLRenderer({ antialias: true });
-    renderer.setSize(width, height);
-    container.appendChild(renderer.domElement);
+  const renderer = new WebGLRenderer({ antialias: true });
+  renderer.setSize(width, height);
+  container.appendChild(renderer.domElement);
 
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
 
-    const ambient = new AmbientLight(0xffffff, 0.8);
-    const directional = new DirectionalLight(0xffffff, 1);
-    directional.position.set(3, 3, 3);
-    scene.add(ambient, directional);
+  const ambient = new AmbientLight(0xffffff, 0.8);
+  const directional = new DirectionalLight(0xffffff, 1);
+  directional.position.set(3, 3, 3);
+  scene.add(ambient, directional);
 
-    const loader = new IFCLoader();
-    loader.ifcManager.setWasmPath("/");
+  const loader = new IFCLoader();
+  loader.ifcManager.setWasmPath("/"); // garante acesso ao wasm local
 
-    loader.load(item.url, (model) => {
+  loader.load(
+    `${item.url}?t=${Date.now()}`,
+    (model) => {
       scene.add(model);
       const box = new Box3().setFromObject(model);
       const center = box.getCenter(new Vector3());
@@ -197,13 +199,16 @@ function TelaInicial() {
         renderer.render(scene, camera);
       };
       animate();
-    });
+    },
+    undefined,
+    (error) => console.error("❌ Erro no IFC:", error)
+  );
 
-    return () => {
-      renderer.dispose();
-      container.innerHTML = "";
-    };
-  }, [report, viewingHistoryItem]);
+  return () => {
+    renderer.dispose();
+    container.innerHTML = "";
+  };
+}, [report, viewingHistoryItem]);
 
   // ============================
   // 📊 RELATÓRIO VISUAL
