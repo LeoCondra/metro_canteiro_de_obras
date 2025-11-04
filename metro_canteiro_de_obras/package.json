@@ -22,7 +22,8 @@
     "react-router-dom": "7.9.4",
     "three": "^0.149.0",
     "three-stdlib": "2.36.0",
-    "web-ifc": "0.0.46",
+    "vite": "^5.4.0",
+    "web-ifc": "^0.0.46",
     "web-ifc-three": "0.0.125",
     "web-ifc-viewer": "1.0.218"
   },
