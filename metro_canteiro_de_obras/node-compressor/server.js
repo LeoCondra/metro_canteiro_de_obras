@@ -87,16 +87,17 @@ app.post("/compress", upload.single("file"), async (req, res) => {
     });
   }
 });
-
 // ============================
 // 🧠 HEALTH CHECK
 // ============================
-app.get("/", (req, res) => res.send("✅ Node Compressor ativo e pronto!"));
+app.get("/", (req, res) => {
+  res.status(200).send("✅ Node Compressor ativo e pronto!");
+});
 
 // ============================
 // 🚀 START SERVER
 // ============================
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () =>
-  console.log(`🚀 Node compressor rodando na porta ${PORT}`)
-);
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`🚀 Node compressor rodando na porta ${PORT}`);
+});
