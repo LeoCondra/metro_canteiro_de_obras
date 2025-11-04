@@ -20,9 +20,7 @@ const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const BUCKET = "canteiro de obras";
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// ============================
-// 🚀 ENDPOINT DE COMPRESSÃO
-// ============================
+  
 app.post("/compress", upload.single("file"), async (req, res) => {
   try {
     const filePath = req.file.path;
@@ -61,10 +59,9 @@ app.post("/compress", upload.single("file"), async (req, res) => {
   }
 });
 
-// ============================
-// 🧩 PORTA DINÂMICA
-// ============================
+
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () =>
   console.log(`🚀 Node Compressor ativo e pronto! Porta ${PORT}`)
 );
+
