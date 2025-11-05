@@ -179,7 +179,7 @@ html, body, #root {
   color: #555;
 }
 
-/* botão delete (icone MdDelete) */
+/* botão delete */
 .delete-icon {
   cursor: pointer;
   font-size: 1.35rem;
@@ -302,6 +302,71 @@ html, body, #root {
 /* ========================= */
 .btn-voltar {
   display: none !important;
+}
+
+/* ========================= */
+/* ÁREA DE COMPARAÇÃO (NOVA) */
+/* ========================= */
+
+.compare-drop-zone {
+  margin-top: 18px;
+  padding: 14px;
+  border: 2px dashed #0a5ccf;
+  border-radius: 10px;
+  background: #eef6ff;
+  cursor: grab;
+  text-align: center;
+  transition: 0.25s ease;
+}
+
+.compare-drop-zone.dragover {
+  background: #d6e9ff;
+  border-color: #0058d4;
+  transform: scale(1.02);
+}
+
+.compare-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: #003da5;
+}
+
+.compare-hint {
+  font-size: 0.8rem;
+  opacity: 0.75;
+  margin-top: 3px;
+}
+
+.compare-selected-file {
+  padding: 6px 10px;
+  background: #fff;
+  margin: 6px auto;
+  border-radius: 6px;
+  width: 90%;
+  font-size: 0.85rem;
+  border: 1px solid #ccd9ff;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+}
+
+.compare-result-box {
+  margin-top: 12px;
+  padding: 15px;
+  background: #f1fff1;
+  border: 1px solid #3aa93a;
+  border-radius: 8px;
+  animation: fadeIn 0.4s ease;
+}
+
+.compare-result-box h4 {
+  font-size: 1rem;
+  margin-bottom: 6px;
+  color: #2e7d32;
+}
+
+.compare-file-name {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #333;
 }
 
 /* ========================= */

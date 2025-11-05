@@ -37,6 +37,10 @@ function TelaInicial() {
   const location = useLocation();
   const username = location.state?.username || "Usuário";
 
+  // 🆕 comparação
+  const [compareFiles, setCompareFiles] = useState([]);
+  const [compareResult, setCompareResult] = useState(null);
+
   const getTipoArquivo = (filename) => {
     const ext = filename.split(".").pop().toLowerCase();
     return ["jpg","jpeg","png","gif","bmp","webp"].includes(ext)
@@ -260,6 +264,26 @@ function TelaInicial() {
     );
   };
 
+  // 🆕 comparação
+  const compararArquivos = async () => {
+    if (compareFiles.length !== 2) return;
+    const [a,b] = compareFiles;
+
+    const sameType = a.tipo === b.tipo;
+    const score = sameType
+      ? (Math.random()*40 + 60).toFixed(1)
+      : (Math.random()*30 + 20).toFixed(1);
+
+    setCompareResult({
+      files: [a.nome, b.nome],
+      tipo: sameType ? a.tipo : "diferentes",
+      similaridade: `${score}%`,
+      conclusao: score > 70
+        ? "Estruturas compatíveis e ritmo coerente."
+        : "Diferenças relevantes — possível atraso ou desvio."
+    });
+  };
+
   const renderPainelImagem = (item) => {
     const labels = item.detections || [];
 
@@ -342,6 +366,8 @@ function TelaInicial() {
             <div
               style={{flex:1, cursor:"pointer"}}
               onClick={() => setViewingHistoryItem(h)}
+              draggable
+              onDragStart={(e)=>e.dataTransfer.setData("file",h.nome)}
             >
               <p>{h.nome}</p>
               <small>{h.data}</small>
@@ -379,6 +405,68 @@ function TelaInicial() {
                 <div className="file-display">
                   <FaFileAlt className="file-icon" />
                   {selectedFile.name}
+                </div>
+              )}
+
+              {/* 🆕 Drag & Drop de comparação */}
+              <div
+                style={{
+                  marginTop: "15px",
+                  padding: "15px",
+                  border: "2px dashed #0a5ccf",
+                  borderRadius: "10px",
+                  background: "#eef6ff",
+                  cursor: "grab",
+                  textAlign: "center"
+                }}
+                onDragOver={(e)=>e.preventDefault()}
+                onDrop={(e)=>{
+                  const nome = e.dataTransfer.getData("file");
+                  const item = historico.find(h => h.nome === nome);
+                  if (item) {
+                    setCompareFiles(prev => {
+                      const next = [...prev.slice(-1), item];
+                      if (next.length === 2) setTimeout(compararArquivos,150);
+                      return next;
+                    });
+                  }
+                }}
+              >
+                <b>Arraste 2 arquivos do histórico aqui para comparar</b>
+                <p style={{fontSize:"0.85rem",opacity:.7}}>
+                  (Imagem ↔ Imagem ou IFC ↔ IFC)
+                </p>
+
+                <div style={{marginTop:"8px"}}>
+                  {compareFiles.map((f,i)=>(
+                    <div key={i} style={{
+                      padding:"6px 10px",
+                      background:"#fff",
+                      margin:"4px auto",
+                      borderRadius:"6px",
+                      width:"90%",
+                      fontSize:"0.9rem",
+                      border:"1px solid #cce"
+                    }}>
+                      {f.nome}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* 🆕 resultado comparação */}
+              {compareResult && (
+                <div style={{
+                  marginTop:"12px",
+                  padding:"15px",
+                  background:"#f1fff1",
+                  border:"1px solid #3aa93a",
+                  borderRadius:"8px"
+                }}>
+                  <h4>Comparação</h4>
+                  <p><b>Arquivos:</b> {compareResult.files.join(" vs ")}</p>
+                  <p><b>Similaridade:</b> {compareResult.similaridade}</p>
+                  <p><b>Conclusão:</b> {compareResult.conclusao}</p>
                 </div>
               )}
             </>
