@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { MdSubway } from 'react-icons/md'
 import { useNavigate } from 'react-router-dom'
-import supabase from './Supabase.js'   // cliente do Supabase
+import {supabase} from './Supabase.js'   // cliente do Supabase
 import './Login.css'
 
 function Login() {

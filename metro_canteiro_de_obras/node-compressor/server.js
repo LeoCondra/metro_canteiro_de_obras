@@ -3,8 +3,7 @@ import multer from "multer";
 import cors from "cors";
 import zlib from "zlib";
 import fs from "fs";
-import { createClient } from "@supabase/supabase-js";
-
+import { supabase, BUCKET } from "./SUPABASE.js"; 
 const app = express();
 app.use(cors({
   origin: "*",
@@ -15,12 +14,7 @@ app.use(express.json());
 
 const upload = multer({ dest: "uploads/" });
 
-const SUPABASE_URL = "https://aedludqrnwntsqgyjjla.supabase.co";
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFlZGx1ZHFybndudHNxZ3lqamxhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA3NTE2OTYsImV4cCI6MjA3NjMyNzY5Nn0.DV8BB3SLXxBKSZ6pMCbCUmnhkLaujehwPxJi4zvIbRU";
-const BUCKET = "canteiro de obras";
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-
-  
+// ✅ Rota principal
 app.post("/compress", upload.single("file"), async (req, res) => {
   try {
     const filePath = req.file.path;
@@ -50,6 +44,7 @@ app.post("/compress", upload.single("file"), async (req, res) => {
       url: data.publicUrl,
       fileName: compressedName,
     });
+
   } catch (err) {
     console.error("❌ Erro no servidor:", err);
     return res.status(500).json({
@@ -59,9 +54,8 @@ app.post("/compress", upload.single("file"), async (req, res) => {
   }
 });
 
-
+// ✅ Porta
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () =>
   console.log(`🚀 Node Compressor ativo e pronto! Porta ${PORT}`)
 );
-
