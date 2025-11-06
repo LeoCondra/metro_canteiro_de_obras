@@ -37,7 +37,7 @@ function TelaInicial() {
   const location = useLocation();
   const username = location.state?.username || "Usuário";
 
-  // 🆕 comparação
+  // comparação
   const [compareFiles, setCompareFiles] = useState([]);
   const [compareResult, setCompareResult] = useState(null);
 
@@ -146,6 +146,7 @@ function TelaInicial() {
     }
   };
 
+  // fetch IFC
   async function fetchIFCBuffer(url) {
     const res = await fetch(url);
     const total = +res.headers.get("content-length") || 0;
@@ -164,6 +165,7 @@ function TelaInicial() {
     return mem.slice(0, off).buffer;
   }
 
+  // render IFC
   useEffect(() => {
     const item = viewingHistoryItem || report;
     if (!item || !item.url) return;
@@ -230,6 +232,7 @@ function TelaInicial() {
     return () => { cancel = true; container.innerHTML = ""; renderer.dispose(); };
   }, [report, viewingHistoryItem]);
 
+  // progresso timeline
   const PainelProgresso = () => {
     if (!progressoObra.length) return null;
     const last = progressoObra.at(-1);
@@ -264,25 +267,60 @@ function TelaInicial() {
     );
   };
 
-  // 🆕 comparação
+  // comparar
   const compararArquivos = async () => {
     if (compareFiles.length !== 2) return;
     const [a,b] = compareFiles;
 
-    const sameType = a.tipo === b.tipo;
-    const score = sameType
-      ? (Math.random()*40 + 60).toFixed(1)
-      : (Math.random()*30 + 20).toFixed(1);
+    try {
+      setProgressMsg("🔍 IA analisando imagens e comparando estruturas...");
+      setStatus("processando");
 
-    setCompareResult({
-      files: [a.nome, b.nome],
-      tipo: sameType ? a.tipo : "diferentes",
-      similaridade: `${score}%`,
-      conclusao: score > 70
-        ? "Estruturas compatíveis e ritmo coerente."
-        : "Diferenças relevantes — possível atraso ou desvio."
-    });
+      const blobA = await fetch(a.url).then(r => r.blob());
+      const blobB = await fetch(b.url).then(r => r.blob());
+
+      const form = new FormData();
+      form.append("compare", "true");
+      form.append("fileA", blobA, a.nome);
+      form.append("fileB", blobB, b.nome);
+      form.append("username", username);
+
+      const r = await fetch(ANALYZE_URL, { method:"POST", body:form });
+      const out = await r.json();
+
+      setCompareResult({
+        files: [a.nome, b.nome],
+        tipo: out.tipo ?? out.tipoComparacao,
+        similaridade: out.similaridade,
+        alertas: out.alertas || [],
+        conclusao: (() => {
+          if (out.alertas?.includes("execução pode não corresponder ao modelo"))
+            return "⚠️ Execução possivelmente fora do planejado";
+          if (out.alertas?.length > 0)
+            return "Diferenças relevantes encontradas";
+          return " Compatível com execução esperada";
+        })()
+      });
+
+      setStatus("concluída");
+      setProgressMsg("Comparação concluída");
+
+    } catch {
+      setCompareResult({
+        files: [a.nome, b.nome],
+        similaridade: "N/A",
+        alertas: ["Erro no comparador"],
+        conclusao: "Falha ao comparar"
+      });
+      setStatus("falhou");
+      setProgressMsg("Erro na comparação");
+    }
   };
+
+  // auto trigger
+  useEffect(() => {
+    if (compareFiles.length === 2) compararArquivos();
+  }, [compareFiles]);
 
   const renderPainelImagem = (item) => {
     const labels = item.detections || [];
@@ -408,7 +446,7 @@ function TelaInicial() {
                 </div>
               )}
 
-              {/* 🆕 Drag & Drop de comparação */}
+              {/* Drag & Drop de comparação */}
               <div
                 style={{
                   marginTop: "15px",
@@ -424,11 +462,8 @@ function TelaInicial() {
                   const nome = e.dataTransfer.getData("file");
                   const item = historico.find(h => h.nome === nome);
                   if (item) {
-                    setCompareFiles(prev => {
-                      const next = [...prev.slice(-1), item];
-                      if (next.length === 2) setTimeout(compararArquivos,150);
-                      return next;
-                    });
+                    setCompareFiles(prev => [...prev.slice(-1), item]);
+                    setCompareResult(null);
                   }
                 }}
               >
@@ -454,7 +489,6 @@ function TelaInicial() {
                 </div>
               </div>
 
-              {/* 🆕 resultado comparação */}
               {compareResult && (
                 <div style={{
                   marginTop:"12px",
@@ -466,6 +500,13 @@ function TelaInicial() {
                   <h4>Comparação</h4>
                   <p><b>Arquivos:</b> {compareResult.files.join(" vs ")}</p>
                   <p><b>Similaridade:</b> {compareResult.similaridade}</p>
+                  {compareResult.alertas?.length > 0 && (
+                    <ul>
+                      {compareResult.alertas.map((a,i)=>(
+                        <li key={i} style={{color:"#a00"}}>{a}</li>
+                      ))}
+                    </ul>
+                  )}
                   <p><b>Conclusão:</b> {compareResult.conclusao}</p>
                 </div>
               )}
