@@ -1,16 +1,18 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-// 🚀 Configuração definitiva
+// 🚀 Configuração definitiva para React + IFC no Render
 export default defineConfig({
   plugins: [react()],
+
   preview: {
     port: 4173,
     allowedHosts: [
-      "metro-canteiro-de-obras.onrender.com", // teu front
-      "node-compressor.onrender.com",          // teu backend no Render
+      "metro-canteiro-de-obras.onrender.com",
+      "node-compressor.onrender.com",
     ],
   },
+
   server: {
     port: 5173,
     allowedHosts: [
@@ -26,8 +28,15 @@ export default defineConfig({
       methods: ["GET", "POST", "OPTIONS"],
       allowedHeaders: ["Content-Type", "Authorization", "apikey"],
     },
+
+    // 👇 ISSO É O QUE FAZ O WASM FUNCIONAR NO RENDER
+    mimeTypes: {
+      "application/wasm": ["wasm"],
+    },
   },
+
   build: {
-    chunkSizeWarningLimit: 1600, // evita warning de bundle grande
+    chunkSizeWarningLimit: 1600,
+    target: "esnext", // garante compatibilidade com WebAssembly
   },
 });
