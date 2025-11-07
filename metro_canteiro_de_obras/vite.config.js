@@ -1,19 +1,8 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import { viteStaticCopy } from "vite-plugin-static-copy";
 
 export default defineConfig({
-  plugins: [
-    react(),
-    viteStaticCopy({
-      targets: [
-        {
-          src: "public/wasm/*",
-          dest: "wasm"
-        }
-      ]
-    })
-  ],
+  plugins: [react()],
 
   assetsInclude: ["**/*.wasm"],
 
@@ -42,7 +31,7 @@ export default defineConfig({
     },
 
     fsServe: {
-      strict: false,
+      strict: false, // ✅ permite servir .wasm no dev e no build
     },
   },
 
