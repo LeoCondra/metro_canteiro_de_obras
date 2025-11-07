@@ -201,7 +201,7 @@ function TelaInicial() {
 
       const blobURL = URL.createObjectURL(new Blob([buf]));
       const loader = new IFCLoader();
-      loader.ifcManager.setWasmPath("/");
+      loader.ifcManager.setWasmPath("/wasm/");
       loader.ifcManager.useWebWorkers(false);
 
       loader.load(blobURL, (model) => {
