@@ -322,6 +322,62 @@ html, body, #root {
 }
 
 /* =========================
+   BIM OVERLAY + SLIDER
+========================= */
+.overlay-container {
+  position: relative;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.overlay-container img {
+  display: block;
+  width: 100%;
+  border-radius: 8px;
+}
+
+.overlay-container canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100% !important;
+  height: 100% !important;
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+.overlay-slider-wrapper {
+  margin-top: 14px;
+  text-align: center;
+}
+
+.overlay-slider-wrapper label {
+  font-weight: 600;
+  font-size: .92rem;
+  color: #003da5;
+}
+
+.overlay-slider-wrapper input[type="range"] {
+  width: 85%;
+  margin-top: 6px;
+  cursor: pointer;
+  accent-color: #003da5;
+}
+
+.overlay-diff-box {
+  background: #fff7e6;
+  border: 1px solid #ffd48a;
+  padding: 10px;
+  margin-top: 10px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
+.overlay-active img {
+  filter: brightness(0.85);
+}
+
+/* =========================
    ANIMATIONS
 ========================= */
 @keyframes spin { 

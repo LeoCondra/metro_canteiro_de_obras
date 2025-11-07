@@ -7,7 +7,7 @@ import { MdNotStarted, MdAutorenew, MdCheckCircle, MdCancel,
 
 import {
   Scene, PerspectiveCamera, WebGLRenderer, Color,
-  AmbientLight, DirectionalLight, Box3, Vector3
+  AmbientLight, DirectionalLight, Box3, Vector3, EdgesGeometry
 } from "three";
 import { IFCLoader } from "web-ifc-three/IFCLoader";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
@@ -34,10 +34,12 @@ function TelaInicial() {
   const [alertas, setAlertas] = useState([]);
 
   const viewerRef = useRef(null);
+  const overlayCanvasRef = useRef(null);
+  const [overlayOpacity, setOverlayOpacity] = useState(0.5);
+
   const location = useLocation();
   const username = location.state?.username || "Usuário";
 
-  // comparação
   const [compareFiles, setCompareFiles] = useState([]);
   const [compareResult, setCompareResult] = useState(null);
 
@@ -146,7 +148,6 @@ function TelaInicial() {
     }
   };
 
-  // fetch IFC
   async function fetchIFCBuffer(url) {
     const res = await fetch(url);
     const total = +res.headers.get("content-length") || 0;
@@ -165,7 +166,6 @@ function TelaInicial() {
     return mem.slice(0, off).buffer;
   }
 
-  // render IFC
   useEffect(() => {
     const item = viewingHistoryItem || report;
     if (!item || !item.url) return;
@@ -178,6 +178,7 @@ function TelaInicial() {
     container.innerHTML = "";
 
     const scene = new Scene();
+    viewerRef.current.__scene = scene;
     scene.background = new Color("#0d1117");
 
     const camera = new PerspectiveCamera(60, container.clientWidth / 400, 0.1, 100000);
@@ -206,6 +207,14 @@ function TelaInicial() {
 
       loader.load(blobURL, (model) => {
         if (cancel) return;
+
+        model.traverse((c)=>{
+          if (c.material) {
+            c.material.transparent = true;
+            c.material.opacity = overlayOpacity;
+          }
+        });
+
         scene.add(model);
 
         const box = new Box3().setFromObject(model);
@@ -232,7 +241,14 @@ function TelaInicial() {
     return () => { cancel = true; container.innerHTML = ""; renderer.dispose(); };
   }, [report, viewingHistoryItem]);
 
-  // progresso timeline
+  useEffect(() => {
+    const scene = viewerRef.current?.__scene;
+    if (!scene) return;
+    scene.traverse((c)=>{
+      if (c.material) c.material.opacity = overlayOpacity;
+    });
+  }, [overlayOpacity]);
+
   const PainelProgresso = () => {
     if (!progressoObra.length) return null;
     const last = progressoObra.at(-1);
@@ -267,7 +283,6 @@ function TelaInicial() {
     );
   };
 
-  // comparar
   const compararArquivos = async () => {
     if (compareFiles.length !== 2) return;
     const [a,b] = compareFiles;
@@ -317,7 +332,6 @@ function TelaInicial() {
     }
   };
 
-  // auto trigger
   useEffect(() => {
     if (compareFiles.length === 2) compararArquivos();
   }, [compareFiles]);
@@ -327,9 +341,34 @@ function TelaInicial() {
 
     return (
       <div className="report success">
-        <div style={{maxWidth:"600px",margin:"0 auto"}}>
+        <div style={{ position:"relative", maxWidth:"600px", margin:"0 auto" }}>
           <img src={item.url} alt="preview"
             style={{width:"100%",borderRadius:"8px",display:"block"}} />
+
+          <canvas
+            ref={overlayCanvasRef}
+            style={{
+              position:"absolute",
+              top:0,
+              left:0,
+              width:"100%",
+              height:"100%",
+              pointerEvents:"none",
+              opacity: overlayOpacity
+            }}
+          ></canvas>
+        </div>
+
+        <div style={{ marginTop:"12px" }}>
+          <label>Transparência BIM / Overlay</label>
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            value={overlayOpacity}
+            onChange={(e)=>setOverlayOpacity(parseFloat(e.target.value))}
+          />
         </div>
 
         <div style={{textAlign:"left",marginTop:"1rem"}}>
@@ -356,6 +395,19 @@ function TelaInicial() {
       <div style={{marginTop:"10px",border:"1px solid #003da5",borderRadius:"8px"}}>
         <div ref={viewerRef} className="ifc-viewer-container"></div>
       </div>
+
+      <div style={{ marginTop:"12px" }}>
+        <label>Transparência BIM</label>
+        <input
+          type="range"
+          min="0"
+          max="1"
+          step="0.01"
+          value={overlayOpacity}
+          onChange={(e)=>setOverlayOpacity(parseFloat(e.target.value))}
+        />
+      </div>
+
       <PainelProgresso />
     </div>
   );
@@ -446,7 +498,6 @@ function TelaInicial() {
                 </div>
               )}
 
-              {/* Drag & Drop de comparação */}
               <div
                 style={{
                   marginTop: "15px",
