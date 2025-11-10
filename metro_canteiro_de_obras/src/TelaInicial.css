@@ -10,7 +10,7 @@ html, body, #root {
   width: 100%;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   background-color: #f5f6fa;
-  color: #333;
+  color: #111;
   overflow-x: hidden;
 }
 
@@ -40,13 +40,17 @@ html, body, #root {
   gap: 8px;
 }
 
-.status-icon { font-size: 1.4rem; }
+.status-icon {
+  font-size: 1.4rem;
+}
 .status-icon.not-started { color: #f87171; }
 .status-icon.in-progress { color: #facc15; animation: spin 1s linear infinite; }
 .status-icon.done { color: #22c55e; }
 .status-icon.failed { color: #ef4444; }
 
-.status-text { font-weight: 600; }
+.status-text {
+  font-weight: 600;
+}
 
 /* ===== USER AREA ===== */
 .user-section {
@@ -64,8 +68,13 @@ html, body, #root {
   cursor: pointer;
 }
 
-.username { font-weight: 700; }
-.user-icon { font-size: 2rem; }
+.username {
+  font-weight: 700;
+}
+
+.user-icon {
+  font-size: 2rem;
+}
 
 /* ===== SIDEBAR ===== */
 .sidebar {
@@ -83,7 +92,10 @@ html, body, #root {
 }
 .sidebar.open { left: 0; }
 
-.sidebar h3 { margin-bottom: 10px; }
+.sidebar h3 {
+  margin-bottom: 10px;
+  font-weight: 700;
+}
 
 .history-item {
   display: flex;
@@ -123,7 +135,7 @@ html, body, #root {
   display: grid;
   justify-content: center;
   align-items: center;
-  grid-template-columns: 12fr;
+  grid-template-columns: 1fr;
   gap: 14px;
   margin-bottom: 12px;
 }
@@ -140,9 +152,15 @@ html, body, #root {
   gap: 8px;
   transition: background .2s ease, border-color .2s ease;
 }
-.upload-area:hover { background: #e6efff; border-color: #0050d6; }
+.upload-area:hover {
+  background: #e6efff;
+  border-color: #0050d6;
+}
 
-.upload-icon { font-size: 3rem; color: #003da5; }
+.upload-icon {
+  font-size: 3rem;
+  color: #003da5;
+}
 
 .file-chips {
   display: flex;
@@ -162,7 +180,7 @@ html, body, #root {
   border: 1px solid #cfe0ff;
 }
 
-/* ===== PRIMARY BUTTON (Comparar) ===== */
+/* ===== BUTTONS ===== */
 .primary-btn,
 .capture-btn {
   margin-top: 12px;
@@ -175,12 +193,20 @@ html, body, #root {
   border: none;
   transition: transform .05s ease, background .2s ease;
 }
+
 .primary-btn:hover,
-.capture-btn:hover { background: #003fa5; }
+.capture-btn:hover {
+  background: #003fa5;
+}
 .primary-btn:active,
-.capture-btn:active { transform: translateY(1px); }
+.capture-btn:active {
+  transform: translateY(1px);
+}
 .primary-btn:disabled,
-.capture-btn:disabled { background: #9bb9ef; cursor: not-allowed; }
+.capture-btn:disabled {
+  background: #9bb9ef;
+  cursor: not-allowed;
+}
 
 /* ===== IFC VIEWER ===== */
 .ifc-viewer-container {
@@ -201,6 +227,7 @@ html, body, #root {
   outline: none;
 }
 
+/* ===== HUD ===== */
 .hud-line {
   font-weight: 600;
   color: #003da5;
@@ -221,7 +248,7 @@ html, body, #root {
   transition: width .25s;
 }
 
-/* ===== MODAL (Comparar BIM × Foto) ===== */
+/* ===== MODAL ===== */
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -279,18 +306,43 @@ html, body, #root {
 }
 
 .modal-actions button:first-child {
-  background: #0050d6; /* Confirmar */
+  background: #0050d6;
   color: white;
 }
 .modal-actions button:first-child:disabled {
   background: #9bb9ef;
 }
 .modal-actions button:last-child {
-  background: #e11d48; /* Cancelar */
+  background: #e11d48;
   color: white;
 }
 
-/* ===== REPORT / TABELA ===== */
+/* ===== DASHBOARD ===== */
+.dashboard-cards {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.dash-card {
+  flex: 1;
+  background: #f8fafc;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid #e5e7eb;
+  text-align: center;
+}
+.dash-card h4 {
+  font-size: .9rem;
+  color: #003da5;
+}
+.dash-card p {
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+/* ===== REPORT TABLE ===== */
 .report {
   margin-top: 16px;
   padding: 14px;
@@ -331,18 +383,12 @@ html, body, #root {
 
 /* ===== RESPONSIVE ===== */
 @media (max-width: 920px) {
-  .uploader-grid {
-    grid-template-columns: 1fr;
-  }
+  .uploader-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 768px) {
-  .compare-grid {
-    grid-template-columns: 1fr;
-  }
-  .ifc-viewer-container {
-    height: 300px;
-  }
+  .compare-grid { grid-template-columns: 1fr; }
+  .ifc-viewer-container { height: 300px; }
 }
 
 @media (max-width: 480px) {
@@ -353,10 +399,11 @@ html, body, #root {
 
 /* ===== ANIMATIONS ===== */
 @keyframes fadeIn {
-  0% { opacity: 0; transform: translateY(8px); }
-  100% { opacity: 1; transform: translateY(0); }
+ 0% { opacity: 0; transform: translateY(8px); }
+100% { opacity: 1; transform: translateY(0); }
 }
+
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+ 0% { transform: rotate(0deg); }
+100% { transform: rotate(360deg); }
 }
