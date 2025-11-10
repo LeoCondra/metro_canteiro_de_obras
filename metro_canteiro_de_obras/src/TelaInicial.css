@@ -121,7 +121,9 @@ html, body, #root {
 /* ===== UPLOAD GRID ===== */
 .uploader-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  justify-content: center;
+  align-items: center;
+  grid-template-columns: 12fr;
   gap: 14px;
   margin-bottom: 12px;
 }

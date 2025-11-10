@@ -449,12 +449,6 @@ export default function TelaInicial() {
           <p>Selecionar BIM (.ifc ou .ifc.gz)</p>
           <input id="bim-upload" type="file" accept=".ifc,.gz" onChange={e=>handleBimChange(e)} hidden/>
         </label>
-
-        <label htmlFor="foto-upload" className="upload-area">
-          <FaFileUpload className="upload-icon"/>
-          <p>Selecionar Foto (.jpg/.png/.webp)</p>
-          <input id="foto-upload" type="file" accept=".jpg,.jpeg,.png,.webp" onChange={e=>handleFotoChange(e)} hidden/>
-        </label>
       </div>
 
       <div className="file-chips">
