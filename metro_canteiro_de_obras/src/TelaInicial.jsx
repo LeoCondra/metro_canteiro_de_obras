@@ -24,6 +24,36 @@ ChartJS.register(LineElement, CategoryScale, LinearScale, PointElement);
 import { supabase, BUCKET, ANALYZE_URL, SUPABASE_ANON_KEY } from "./Supabase";
 import "./TelaInicial.css";
 
+import sobel from "sobel";
+
+
+// ✅ Converte WebGL → 2D → Sobel
+function sobelEdge(webglCanvas) {
+  try {
+    const temp = document.createElement("canvas");
+    temp.width = webglCanvas.width;
+    temp.height = webglCanvas.height;
+    const ctx = temp.getContext("2d");
+
+    ctx.drawImage(webglCanvas, 0, 0);
+
+    const imgData = ctx.getImageData(0, 0, temp.width, temp.height);
+    const sobelData = sobel(imgData);
+
+    const edgeCanvas = document.createElement("canvas");
+    edgeCanvas.width = temp.width;
+    edgeCanvas.height = temp.height;
+    edgeCanvas.getContext("2d").putImageData(sobelData.toImageData(), 0, 0);
+
+    return edgeCanvas;
+  } catch (e) {
+    console.error("Sobel edge failed:", e);
+    alert("Falha ao gerar bordas do BIM");
+    return null;
+  }
+}
+
+
 export default function TelaInicial() {
 
   const [status, setStatus] = useState("não iniciada");
@@ -32,10 +62,9 @@ export default function TelaInicial() {
   const [viewingHistoryItem, setViewingHistoryItem] = useState(null);
 
   const [bimEntry, setBimEntry] = useState(null);
-  const [fotoEntry, setFotoEntry] = useState(null);
+  const [fotoEntry] = useState(null);
 
   const [report, setReport] = useState(null);
-
   const [snapshotImg, setSnapshotImg] = useState(null);
   const [progressMsg, setProgressMsg] = useState("Aguardando arquivo...");
   const [progressPct, setProgressPct] = useState(0);
@@ -60,7 +89,6 @@ export default function TelaInicial() {
     return ["jpg","jpeg","png","webp"].includes(ext) ? "imagem" : "modelo";
   };
 
-  // ===== Carregar histórico =====
   const carregarHistorico = async () => {
     const { data } = await supabase.storage
       .from(BUCKET)
@@ -83,13 +111,12 @@ export default function TelaInicial() {
 
   useEffect(()=>{ carregarHistorico(); },[]);
 
-  // ===== Upload =====
   async function uploadToSupabase(file){
     const fname = `${Date.now()}-${file.name}`;
     const path = `arquivos/${username}/${fname}`;
     await supabase.storage.from(BUCKET).upload(path, file);
-    const { data:urlData } = supabase.storage.from(BUCKET).getPublicUrl(path);
-    return { nome: fname, url: urlData.publicUrl, tipo: getTipoArquivo(fname), data: new Date().toLocaleString() };
+    const { data:url } = supabase.storage.from(BUCKET).getPublicUrl(path);
+    return { nome: fname, url: url.publicUrl, tipo: getTipoArquivo(fname), data: new Date().toLocaleString() };
   }
 
   const handleBimChange = async (e) => {
@@ -108,20 +135,15 @@ export default function TelaInicial() {
     }
   };
 
-  // ✅ DELETE fixado
   const handleDeleteFile = async (nome) => {
     const ok = confirm(`Remover "${nome}" do histórico?`);
     if (!ok) return;
-  
+
     try {
       await supabase.storage.from(BUCKET).remove([`arquivos/${username}/${nome}`]);
-  
       if (bimEntry?.nome === nome) setBimEntry(null);
-      if (fotoEntry?.nome === nome) setFotoEntry(null);
-  
       await carregarHistorico();
-    } catch (err) {
-      console.error(err);
+    } catch {
       alert("Erro ao excluir arquivo");
     }
   };
@@ -136,7 +158,6 @@ export default function TelaInicial() {
     return new File([u8], filename, { type: mime });
   }
 
-  // ===== Fetch IFC Buffer =====
   async function fetchIFCBuffer(url){
     const res = await fetch(url);
     const reader = res.body?.getReader();
@@ -159,7 +180,7 @@ export default function TelaInicial() {
     return mem.slice(0,off).buffer;
   }
 
-  // ===== Viewer 3D =====
+  // ========== Renderiza IFC ==========
   useEffect(()=>{
     let disposed = false;
     (async()=>{
@@ -230,19 +251,23 @@ export default function TelaInicial() {
         animate();
       });
 
-      const handleResize=()=>{
-        const w = container.clientWidth;
-        renderer.setSize(w,400);
-        camera.aspect = w/400;
-        camera.updateProjectionMatrix();
-      };
-      window.addEventListener("resize",handleResize);
-
-      return ()=>{ disposed=true; window.removeEventListener("resize",handleResize); renderer.dispose(); };
+      return ()=>{ disposed=true; renderer.dispose(); };
     })();
   },[bimEntry?.url, viewingHistoryItem?.url]);
 
-  // ===== Comparação =====
+  // ✅ Gera sobel + abre modal
+  const prepararSnapshot = () => {
+    const canvas = rendererRef.current?.domElement;
+    if (!canvas) return alert("Render não encontrado");
+
+    const edgeCanvas = sobelEdge(canvas);
+    if (!edgeCanvas) return;
+
+    const snapshot = edgeCanvas.toDataURL();
+    setSnapshotImg(snapshot);
+    setShowCompareModal(true);
+  };
+
   const enviarComparacaoModal = async () => {
     if (!snapshotImg) return alert("Gere snapshot primeiro");
     if (!modalPhotoFile) return alert("Anexe uma foto");
@@ -251,7 +276,7 @@ export default function TelaInicial() {
     setModalProgressPct(30);
     setReport(null);
 
-    const snapshotFile = dataURLtoFile(snapshotImg, "snapshot-bim.png");
+    const snapshotFile = dataURLtoFile(snapshotImg, "snapshot-bim-edges.png");
     const fd = new FormData();
     fd.append("compare", "true");
     fd.append("fileA", snapshotFile);
@@ -294,7 +319,6 @@ export default function TelaInicial() {
     }
   };
 
-  // ===== Dashboards =====
   const PainelProgresso = () => {
     if (!progressoObra.length) return null;
     const data = {
@@ -365,7 +389,6 @@ export default function TelaInicial() {
     );
   };
 
-  // ===== JSX =====
   return (
 <div className="tela-container">
 
@@ -397,7 +420,6 @@ export default function TelaInicial() {
         onClick={()=>{
           setViewingHistoryItem(h);
           if (h.tipo === "modelo") setBimEntry(h);
-          if (h.tipo === "imagem") setFotoEntry(h);
           setSnapshotImg(null);
         }}
       >
@@ -406,7 +428,6 @@ export default function TelaInicial() {
           <small>{h.data}</small>
         </div>
 
-        {/* ✅ botão delete isolado */}
         <MdDelete
           style={{cursor:"pointer",color:"#c00"}}
           onClick={(e)=>{
@@ -418,7 +439,7 @@ export default function TelaInicial() {
     ))}
   </div>
 
-  {/* Conteúdo */}
+  {/* Content */}
   <div className="content">
     <div className="content-inner">
 
@@ -448,12 +469,7 @@ export default function TelaInicial() {
           <div ref={viewerRef} className="ifc-viewer-container"/>
 
           <button
-            onClick={()=>{
-              const canvas = rendererRef.current?.domElement;
-              if (!canvas) return;
-              setSnapshotImg(canvas.toDataURL());
-              setShowCompareModal(true);
-            }}
+            onClick={prepararSnapshot}
             className="capture-btn"
           >
             Comparar
@@ -479,6 +495,8 @@ export default function TelaInicial() {
     </div>
   </div>
 
+
+  {/* MODAL */}
   {showCompareModal && (
     <div className="modal-backdrop">
       <div className="modal-content">

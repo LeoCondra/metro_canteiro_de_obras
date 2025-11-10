@@ -20,6 +20,7 @@
     "react-dom": "^18.2.0",
     "react-icons": "5.5.0",
     "react-router-dom": "7.9.4",
+    "sobel": "^0.0.11",
     "three": "^0.149.0",
     "web-ifc": "^0.0.39",
     "web-ifc-three": "^0.0.125"
