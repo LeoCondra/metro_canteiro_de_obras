@@ -46,9 +46,7 @@ html, body, #root {
 .status-icon.done { color: #22c55e; }
 .status-icon.failed { color: #ef4444; }
 
-.status-text {
-  font-weight: 600;
-}
+.status-text { font-weight: 600; }
 
 /* ===== USER AREA ===== */
 .user-section {
@@ -112,7 +110,7 @@ html, body, #root {
 
 .content-inner {
   width: 100%;
-  max-width: 900px;
+  max-width: 980px;
   background: white;
   padding: 2rem;
   border-radius: 12px;
@@ -120,7 +118,14 @@ html, body, #root {
   box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 }
 
-/* ===== UPLOAD ===== */
+/* ===== UPLOAD GRID ===== */
+.uploader-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+
 .upload-area {
   border: 2px dashed #003da5;
   background: #f8fbff;
@@ -131,22 +136,49 @@ html, body, #root {
   flex-direction: column;
   align-items: center;
   gap: 8px;
+  transition: background .2s ease, border-color .2s ease;
 }
-.upload-area:hover { background: #e6efff; }
+.upload-area:hover { background: #e6efff; border-color: #0050d6; }
 
-.upload-icon {
-  font-size: 3rem;
-  color: #003da5;
+.upload-icon { font-size: 3rem; color: #003da5; }
+
+.file-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 8px;
 }
 
 .file-display {
-  margin-top: 10px;
   background: #e7f0ff;
   padding: 6px 12px;
   border-radius: 6px;
   display: inline-flex;
+  align-items: center;
   gap: 6px;
+  border: 1px solid #cfe0ff;
 }
+
+/* ===== PRIMARY BUTTON (Comparar) ===== */
+.primary-btn,
+.capture-btn {
+  margin-top: 12px;
+  padding: 10px 16px;
+  background: #0050d6;
+  color: white;
+  font-weight: 600;
+  border-radius: 8px;
+  cursor: pointer;
+  border: none;
+  transition: transform .05s ease, background .2s ease;
+}
+.primary-btn:hover,
+.capture-btn:hover { background: #003fa5; }
+.primary-btn:active,
+.capture-btn:active { transform: translateY(1px); }
+.primary-btn:disabled,
+.capture-btn:disabled { background: #9bb9ef; cursor: not-allowed; }
 
 /* ===== IFC VIEWER ===== */
 .ifc-viewer-container {
@@ -187,20 +219,7 @@ html, body, #root {
   transition: width .25s;
 }
 
-/* ===== BUTTON ===== */
-.capture-btn {
-  margin-top: 12px;
-  padding: 10px 16px;
-  background: #0050d6;
-  color: white;
-  font-weight: 600;
-  border-radius: 8px;
-  cursor: pointer;
-  border: none;
-}
-.capture-btn:hover { background: #003fa5; }
-
-/* ===== MODAL ===== */
+/* ===== MODAL (Comparar BIM × Foto) ===== */
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -236,32 +255,10 @@ html, body, #root {
 .compare-img {
   width: 100%;
   max-height: 260px;
-  object-fit: cover;
+  object-fit: contain;
   border-radius: 10px;
   border: 2px solid #003da5;
-}
-
-.compare-history-list {
-  max-height: 260px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  border: 1px solid #ccd9ff;
-  padding: 6px;
-  border-radius: 8px;
-}
-
-.compare-history-item {
-  padding: 6px;
-  cursor: pointer;
-  border-radius: 6px;
-  background: #f8fbff;
-  border: 1px solid transparent;
-}
-.compare-history-item.selected {
-  border-color: #003da5;
-  background: #e7f0ff;
+  background: #0b0f14;
 }
 
 .modal-actions {
@@ -278,19 +275,20 @@ html, body, #root {
   cursor: pointer;
   border: none;
 }
+
 .modal-actions button:first-child {
-  background: #0050d6;
+  background: #0050d6; /* Confirmar */
   color: white;
 }
 .modal-actions button:first-child:disabled {
   background: #9bb9ef;
 }
 .modal-actions button:last-child {
-  background: #e11d48;
+  background: #e11d48; /* Cancelar */
   color: white;
 }
 
-/* ===== CHART ===== */
+/* ===== REPORT / TABELA ===== */
 .report {
   margin-top: 16px;
   padding: 14px;
@@ -301,7 +299,41 @@ html, body, #root {
   border: 1px solid #bbf7d0;
 }
 
+.relatorio-tabela {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.relatorio-tabela thead th {
+  text-align: left;
+  background: #f8fafc;
+  color: #111827;
+  font-weight: 700;
+  padding: 10px 12px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.relatorio-tabela tbody td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #eef2f7;
+}
+
+.relatorio-tabela tbody tr:hover {
+  background: #f5faff;
+}
+
 /* ===== RESPONSIVE ===== */
+@media (max-width: 920px) {
+  .uploader-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 768px) {
   .compare-grid {
     grid-template-columns: 1fr;
