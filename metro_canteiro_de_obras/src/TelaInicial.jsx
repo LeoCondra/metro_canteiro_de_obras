@@ -1,3 +1,4 @@
+// === IMPORTS ===
 import { useState, useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
 
@@ -24,7 +25,7 @@ import { supabase, BUCKET, ANALYZE_URL, SUPABASE_ANON_KEY } from "./Supabase";
 import "./TelaInicial.css";
 import sobel from "sobel";
 
-// === Sobel do BIM ===
+// === SOBEL DO BIM ===
 function sobelEdge(webglCanvas) {
   try {
     const temp = document.createElement("canvas");
@@ -32,15 +33,12 @@ function sobelEdge(webglCanvas) {
     temp.height = webglCanvas.height;
     const ctx = temp.getContext("2d");
     ctx.drawImage(webglCanvas, 0, 0);
-
     const imgData = ctx.getImageData(0, 0, temp.width, temp.height);
     const sobelData = sobel(imgData);
-
     const edgeCanvas = document.createElement("canvas");
     edgeCanvas.width = temp.width;
     edgeCanvas.height = temp.height;
     edgeCanvas.getContext("2d").putImageData(sobelData.toImageData(), 0, 0);
-
     return edgeCanvas;
   } catch (e) {
     console.error("Sobel error:", e);
@@ -106,34 +104,106 @@ export default function TelaInicial() {
 
   useEffect(()=>{ carregarHistorico(); },[]);
 
-  async function uploadToSupabase(file){
-    const fname = `${Date.now()}-${file.name}`;
-    const path = `arquivos/${username}/${fname}`;
-    await supabase.storage.from(BUCKET).upload(path,file);
-    const { data:url } = supabase.storage.from(BUCKET).getPublicUrl(path);
-    return { nome: fname, url:url.publicUrl, tipo:getTipoArquivo(fname), data:new Date().toLocaleString() };
-  }
-
   const handleBimChange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    setStatus("processando"); setProgressMsg("Carregando IFC...");
+    setStatus("processando");
+    setProgressMsg("Carregando IFC...");
     try {
-      const entry = await uploadToSupabase(file);
-      setBimEntry(entry);
-      setViewingHistoryItem(null);
+      const fname = `${Date.now()}-${file.name}`;
+      await supabase.storage.from(BUCKET).upload(`arquivos/${username}/${fname}`, file);
+      const { data:url } = supabase.storage
+        .from(BUCKET).getPublicUrl(`arquivos/${username}/${fname}`);
+      setBimEntry({ nome:fname, url:url.publicUrl });
       setStatus("concluída");
       setTimeout(carregarHistorico,500);
     } catch {
-      setStatus("falhou"); alert("Erro no upload do IFC");
+      setStatus("falhou");
+      alert("Erro no upload do IFC");
     }
   };
 
-  const handleDeleteFile = async (nome) => {
-    if (!confirm(`Excluir ${nome}?`)) return;
-    await supabase.storage.from(BUCKET).remove([`arquivos/${username}/${nome}`]);
-    if (bimEntry?.nome === nome) setBimEntry(null);
-    carregarHistorico();
+  async function fetchIFCBuffer(url){
+    const res = await fetch(url);
+    const reader = res.body?.getReader();
+    const total = Number(res.headers.get("content-length")||0);
+    if (!reader) return res.arrayBuffer();
+    let mem = new Uint8Array(Math.max(total, 3000000));
+    let off = 0;
+    while(true){
+      const {value,done} = await reader.read();
+      if(done) break;
+      mem.set(value,off);
+      off += value.length;
+      setProgressPct(total? Math.round((off/total)*100) : Math.min(99,off/50000));
+    }
+    setProgressPct(100);
+    return mem.slice(0,off).buffer;
+  }
+
+  // Render IFC
+  useEffect(() => {
+    let disposed = false;
+    let animationId;
+    (async () => {
+      const file = viewingHistoryItem?.tipo === "modelo" ? viewingHistoryItem : bimEntry;
+      if (!file?.url) return;
+      const container = viewerRef.current;
+      if (!container) return;
+      let renderer = rendererRef.current;
+      if (!renderer) {
+        renderer = new WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+        rendererRef.current = renderer;
+        renderer.setSize(container.clientWidth, 400);
+        container.appendChild(renderer.domElement);
+      }
+      const scene = new Scene();
+      scene.background = new Color("#fff");
+      const camera = new PerspectiveCamera(60, container.clientWidth / 400, 0.1, 9999);
+      scene.add(new AmbientLight(1.2));
+      const dl = new DirectionalLight(0xffffff, 1.2);
+      dl.position.set(5,10,10);
+      scene.add(dl);
+      const raw = await fetchIFCBuffer(`${file.url}?t=${Date.now()}`);
+      const buf = /\.gz$/.test(file.nome) ? pako.ungzip(new Uint8Array(raw)).buffer : raw;
+      const { OrbitControls } = await import("three/examples/jsm/controls/OrbitControls.js");
+      const controls = new OrbitControls(camera, renderer.domElement);
+      const loader = new IFCLoader();
+      loader.ifcManager.setWasmPath("/");
+      const blobURL = URL.createObjectURL(new Blob([buf]));
+      loader.load(blobURL,(model)=>{
+        if(disposed) return;
+        model.traverse(o => { if(o.isMesh) o.material=new MeshStandardMaterial({color:"#d9d9d9"});});
+        scene.add(model);
+        const box=new Box3().setFromObject(model);
+        const c=box.getCenter(new Vector3());
+        const size=box.getSize(new Vector3()).length();
+        const dist = size/(2*Math.tan((Math.PI*camera.fov)/360));
+        controls.target.copy(c);
+        camera.position.copy(c.clone().add(new Vector3(dist,dist,dist)));
+        camera.lookAt(c);
+        const loop=()=>{ 
+          if(disposed) return; 
+          animationId = requestAnimationFrame(loop); 
+          controls.update(); 
+          renderer.render(scene,camera);
+        };
+        loop();
+      });
+    })();
+    return () => {
+      disposed = true;
+      if (animationId) cancelAnimationFrame(animationId);
+    };
+  }, [bimEntry?.url, viewingHistoryItem?.url]);
+
+  const prepararSnapshot = () => {
+    const canvas = rendererRef.current?.domElement;
+    if(!canvas) return alert("Render não pronto");
+    const edgeCanvas = sobelEdge(canvas);
+    if(!edgeCanvas) return;
+    setSnapshotImg(edgeCanvas.toDataURL());
+    setShowCompareModal(true);
   };
 
   function dataURLtoFile(dataurl, filename){
@@ -144,118 +214,13 @@ export default function TelaInicial() {
     return new File([u8], filename, { type: mime });
   }
 
-  async function fetchIFCBuffer(url){
-    const res = await fetch(url);
-    const reader = res.body?.getReader();
-    const total = Number(res.headers.get("content-length")||0);
-    if (!reader) return res.arrayBuffer();
-
-    let mem = new Uint8Array(Math.max(total, 3000000));
-    let off = 0;
-
-    while(true){
-      const {value,done} = await reader.read();
-      if(done) break;
-
-      mem.set(value,off);
-      off += value.length;
-      setProgressPct(total? Math.round((off/total)*100) : Math.min(99,off/50000));
-    }
-    setProgressPct(100);
-    return mem.slice(0,off).buffer;
-  }
-
-  // ✅ Anti-flicker IFC Viewer
-  useEffect(() => {
-    let disposed = false;
-    let animationId;
-
-    (async () => {
-      const file = viewingHistoryItem?.tipo === "modelo" ? viewingHistoryItem : bimEntry;
-      if (!file?.url) return;
-
-      const container = viewerRef.current;
-      if (!container) return;
-
-      // reuse renderer (prevents blinking)
-      let renderer = rendererRef.current;
-      if (!renderer) {
-        renderer = new WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
-        rendererRef.current = renderer;
-        renderer.setSize(container.clientWidth, 400);
-        container.appendChild(renderer.domElement);
-      }
-
-      const scene = new Scene();
-      scene.background = new Color("#fff");
-      const camera = new PerspectiveCamera(60, container.clientWidth / 400, 0.1, 9999);
-
-      scene.add(new AmbientLight(1.2));
-      const dl = new DirectionalLight(0xffffff, 1.2);
-      dl.position.set(5, 10, 10);
-      scene.add(dl);
-
-      const raw = await fetchIFCBuffer(`${file.url}?t=${Date.now()}`);
-      const buf = /\.gz$/.test(file.nome) ? pako.ungzip(new Uint8Array(raw)).buffer : raw;
-
-      const { OrbitControls } = await import("three/examples/jsm/controls/OrbitControls.js");
-      const controls = new OrbitControls(camera, renderer.domElement);
-
-      const loader = new IFCLoader();
-      loader.ifcManager.setWasmPath("/");
-      const blobURL = URL.createObjectURL(new Blob([buf]));
-
-      loader.load(blobURL,(model)=>{
-        if(disposed) return;
-        model.traverse(o=>{ if(o.isMesh) o.material=new MeshStandardMaterial({color:"#d9d9d9"});});
-        scene.add(model);
-
-        const box=new Box3().setFromObject(model);
-        const c=box.getCenter(new Vector3());
-        const size=box.getSize(new Vector3()).length();
-        const dist = size/(2*Math.tan((Math.PI*camera.fov)/360));
-
-        controls.target.copy(c);
-        camera.position.copy(c.clone().add(new Vector3(dist,dist,dist)));
-        camera.lookAt(c);
-
-        const loop=()=>{ 
-          if(disposed) return; 
-          animationId = requestAnimationFrame(loop); 
-          controls.update(); 
-          renderer.render(scene,camera); 
-        };
-        loop();
-      });
-
-    })();
-
-    return () => {
-      disposed = true;
-      if (animationId) cancelAnimationFrame(animationId);
-    };
-  }, [bimEntry?.url, viewingHistoryItem?.url]);
-
-  // === Comparar
-  const prepararSnapshot = () => {
-    const canvas = rendererRef.current?.domElement;
-    if(!canvas) return alert("Render não pronto");
-    const edgeCanvas = sobelEdge(canvas);
-    if(!edgeCanvas) return;
-    setSnapshotImg(edgeCanvas.toDataURL());
-    setShowCompareModal(true);
-  };
-
   const enviarComparacaoModal = async () => {
     if (!snapshotImg) return alert("Capture primeiro");
     if (!modalPhotoFile) return alert("Selecione foto");
-
     setStatus("processando");
     setModalProgressPct(40);
-
     const snap = dataURLtoFile(snapshotImg,"snapshot.png");
     const prev = progressoObra.length? progressoObra[progressoObra.length-1].porcentagem : 0;
-
     const fd=new FormData();
     fd.append("fileA",snap);
     fd.append("fileB",modalPhotoFile);
@@ -263,14 +228,28 @@ export default function TelaInicial() {
     fd.append("username",username);
 
     try{
-      const r=await fetch(ANALYZE_URL,{method:"POST",headers:{Authorization:`Bearer ${SUPABASE_ANON_KEY}`},body:fd});
+      const r=await fetch(ANALYZE_URL,{
+        method:"POST",
+        headers:{Authorization:`Bearer ${SUPABASE_ANON_KEY}`},
+        body:fd
+      });
+
       const out=await r.json();
       if(out.status!=="ok") throw new Error(out.message);
 
-      const prog = Number(out.progresso_global ?? out.progresso ?? 0);
-      setResultTextBox(`Progresso: ${prog.toFixed(1)}%\n${out.textoFaltas||""}`);
+      // ✅ pega progresso_global real do backend
+      const prog = Number(out.progresso_global);
 
-      setProgressoObra(p=>[...p,{porcentagem:prog,data:new Date().toLocaleString()}]);
+      setResultTextBox(
+        `Progresso Global: ${prog.toFixed(1)}%\n${out.textoFaltas || ""}`
+      );
+
+      // ✅ salva histórico correto
+      setProgressoObra(p=>[
+        ...p,
+        { porcentagem:prog, data:new Date().toLocaleString()}
+      ]);
+
       setReport(out);
       setAlertas(out.alertas||[]);
       setModalProgressPct(100);
@@ -284,7 +263,7 @@ export default function TelaInicial() {
       setTimeout(()=>{
         setShowCompareModal(false);
         setModalPhotoFile(null);
-        setModalPhotoPreview(null)
+        setModalPhotoPreview(null);
         setModalProgressPct(0);
       },600);
     }
@@ -292,7 +271,6 @@ export default function TelaInicial() {
 
   const PainelProgresso = () => {
     if(!progressoObra.length) return null;
-
     const data = {
       labels:progressoObra.map(p=>p.data),
       datasets:[{
@@ -302,11 +280,12 @@ export default function TelaInicial() {
         backgroundColor:"rgba(0,80,214,.25)"
       }]
     };
-
     return (
       <div style={{marginTop:25}}>
         <h3>Histórico de Progresso</h3>
-        <div style={{height:"200px"}}><Line data={data}/></div>
+        <div style={{height:"200px"}}>
+          <Line data={data}/>
+        </div>
       </div>
     );
   };
@@ -314,8 +293,9 @@ export default function TelaInicial() {
   const RelatorioComparacao = () => {
     if (!report) return null;
 
-    const p = Number(report.progresso_global ?? report.progresso ?? 0).toFixed(1);
-    const linhas = Object.entries(report.detalhePorClasse||{}).map(([cls,det])=>({...det,cls}));
+    const p = Number(report.progresso_global).toFixed(1);
+    const linhas = Object.entries(report.detalhePorClasse||{})
+      .map(([cls,det])=>({...det,cls}));
 
     return (
       <div style={{marginTop:25}}>
@@ -335,7 +315,11 @@ export default function TelaInicial() {
             <table className="relatorio-tabela">
               <thead>
                 <tr>
-                  <th>Classe</th><th>Esperado</th><th>Detectado</th><th>Atendido</th><th>Faltando</th>
+                  <th>Classe</th>
+                  <th>Esperado</th>
+                  <th>Detectado</th>
+                  <th>Atendido</th>
+                  <th>Faltando</th>
                 </tr>
               </thead>
               <tbody>
@@ -348,7 +332,9 @@ export default function TelaInicial() {
                     <td>{l.faltando}</td>
                   </tr>
                 ))}
-                {!linhas.length && <tr><td colSpan={5}>Sem classes detectadas</td></tr>}
+                {!linhas.length && (
+                  <tr><td colSpan={5}>Sem classes detectadas</td></tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -380,7 +366,7 @@ export default function TelaInicial() {
     </div>
   </div>
 
-  {/* Sidebar histórico */}
+  {/* Sidebar */}
   <div className={`sidebar ${sidebarOpen?"open":""}`}>
     <h3>Histórico</h3>
     {historico.map((h,i)=>(
@@ -400,7 +386,7 @@ export default function TelaInicial() {
     ))}
   </div>
 
-  {/* Conteúdo */}
+  {/* Conteudo */}
   <div className="content">
     <div className="content-inner">
 
@@ -408,19 +394,27 @@ export default function TelaInicial() {
         <FaFileUpload className="upload-icon"/>
         <p>Selecionar BIM (.ifc / .ifc.gz)</p>
       </label>
-      <input id="bim-upload" type="file" accept=".ifc,.ifc.gz,.gz" style={{display:"none"}} onChange={handleBimChange}/>
+      <input id="bim-upload" type="file"
+        accept=".ifc,.ifc.gz,.gz"
+        style={{display:"none"}}
+        onChange={handleBimChange}
+      />
 
       {bimEntry && (
         <div className="report success" style={{marginTop:16}}>
           <div className="hud-line">{progressMsg}</div>
           <div className="progress-bar"><div style={{width:`${progressPct}%`}}/></div>
-
           <div ref={viewerRef} className="ifc-viewer-container"/>
-
           <button onClick={prepararSnapshot} className="capture-btn">Comparar</button>
-
-          <textarea value={resultTextBox} readOnly placeholder="Resultado..."
-            style={{width:"100%",minHeight:100,marginTop:10,padding:10,borderRadius:8,border:"1px solid #ccc"}}/>
+          <textarea
+            value={resultTextBox}
+            readOnly
+            placeholder="Resultado..."
+            style={{
+              width:"100%",minHeight:100,marginTop:10,
+              padding:10,borderRadius:8,border:"1px solid #ccc"
+            }}
+          />
         </div>
       )}
 
@@ -430,7 +424,7 @@ export default function TelaInicial() {
     </div>
   </div>
 
-  {/* Modal comparação */}
+  {/* Modal */}
   {showCompareModal && (
     <div className="modal-backdrop">
       <div className="modal-content">
@@ -452,13 +446,17 @@ export default function TelaInicial() {
               <FaFileUpload className="upload-icon"/>
               <span>Escolher foto</span>
             </label>
-            <input id="modal-photo-upload" type="file" accept=".jpg,.jpeg,.png,.webp" style={{display:"none"}}
+
+            <input id="modal-photo-upload" type="file"
+              accept=".jpg,.jpeg,.png,.webp"
+              style={{display:"none"}}
               onChange={(e)=>{
                 const f=e.target.files?.[0];
                 if(!f) return;
                 setModalPhotoFile(f);
                 setModalPhotoPreview(URL.createObjectURL(f));
-              }}/>
+              }}
+            />
 
             {modalPhotoPreview && <img src={modalPhotoPreview} className="compare-img" alt="foto"/>}
           </div>
