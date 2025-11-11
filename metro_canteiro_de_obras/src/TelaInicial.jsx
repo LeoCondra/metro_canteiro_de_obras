@@ -76,6 +76,21 @@ export default function TelaInicial() {
   const location = useLocation();
   const username = location.state?.username || "Usuário";
 
+  // ========= DELETE DO HISTÓRICO ==========
+  async function handleDeleteFile(nome) {
+    try {
+      const { error } = await supabase.storage
+        .from(BUCKET)
+        .remove([`arquivos/${username}/${nome}`]);
+
+      if (error) throw error;
+      setHistorico(prev => prev.filter(item => item.nome !== nome));
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao deletar arquivo");
+    }
+  }
+
   const getTipoArquivo = (f) => {
     const ext = f.split(".").pop().toLowerCase();
     return ["jpg","jpeg","png","webp"].includes(ext) ? "imagem" : "modelo";
@@ -237,14 +252,12 @@ export default function TelaInicial() {
       const out=await r.json();
       if(out.status!=="ok") throw new Error(out.message);
 
-      // ✅ pega progresso_global real do backend
-      const prog = Number(out.progresso_global);
+      const prog = parseFloat(out.progresso_global ?? 0);
 
-      setResultTextBox(
-        `Progresso Global: ${prog.toFixed(1)}%\n${out.textoFaltas || ""}`
-      );
+setResultTextBox(
+  `Progresso Global: ${(isNaN(prog) ? 0 : prog).toFixed(1)}%\n${out.textoFaltas || ""}`
+);
 
-      // ✅ salva histórico correto
       setProgressoObra(p=>[
         ...p,
         { porcentagem:prog, data:new Date().toLocaleString()}
@@ -269,12 +282,13 @@ export default function TelaInicial() {
     }
   };
 
+  // ✅ GRÁFICO RENOMEADO
   const PainelProgresso = () => {
     if(!progressoObra.length) return null;
     const data = {
       labels:progressoObra.map(p=>p.data),
       datasets:[{
-        label:"Avanço da Obra (%)",
+        label:"Estado da Obra (%)",
         data:progressoObra.map(p=>p.porcentagem),
         borderColor:"#0050d6",
         backgroundColor:"rgba(0,80,214,.25)"
@@ -282,7 +296,7 @@ export default function TelaInicial() {
     };
     return (
       <div style={{marginTop:25}}>
-        <h3>Histórico de Progresso</h3>
+        <h3>Progressão da Obra</h3>
         <div style={{height:"200px"}}>
           <Line data={data}/>
         </div>
@@ -370,18 +384,27 @@ export default function TelaInicial() {
   <div className={`sidebar ${sidebarOpen?"open":""}`}>
     <h3>Histórico</h3>
     {historico.map((h,i)=>(
-      <div key={i} className="history-item"
+      <div
+        key={i}
+        className="history-item"
         onClick={()=>{
           setViewingHistoryItem(h);
           if(h.tipo==="modelo") setBimEntry(h);
           setSnapshotImg(null);
-        }}>
+        }}
+      >
         <div style={{flex:1}}>
           <p>{h.nome}</p>
           <small>{h.data}</small>
         </div>
-        <MdDelete style={{cursor:"pointer",color:"#c00"}}
-          onClick={(e)=>{ e.stopPropagation(); handleDeleteFile(h.nome); }}/>
+
+        <MdDelete
+          style={{cursor:"pointer",color:"#c00"}}
+          onClick={(e)=>{
+            e.stopPropagation();
+            handleDeleteFile(h.nome);
+          }}
+        />
       </div>
     ))}
   </div>
@@ -394,7 +417,9 @@ export default function TelaInicial() {
         <FaFileUpload className="upload-icon"/>
         <p>Selecionar BIM (.ifc / .ifc.gz)</p>
       </label>
-      <input id="bim-upload" type="file"
+      <input
+        id="bim-upload"
+        type="file"
         accept=".ifc,.ifc.gz,.gz"
         style={{display:"none"}}
         onChange={handleBimChange}
@@ -447,7 +472,9 @@ export default function TelaInicial() {
               <span>Escolher foto</span>
             </label>
 
-            <input id="modal-photo-upload" type="file"
+            <input
+              id="modal-photo-upload"
+              type="file"
               accept=".jpg,.jpeg,.png,.webp"
               style={{display:"none"}}
               onChange={(e)=>{
