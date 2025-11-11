@@ -1,3 +1,4 @@
+// TelaInicial.jsx — alinhado com backend sniper supremo (sem delta)
 import { useState, useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
 
@@ -26,15 +27,12 @@ import "./TelaInicial.css";
 
 import sobel from "sobel";
 
-
-// ✅ Converte WebGL → 2D → Sobel
 function sobelEdge(webglCanvas) {
   try {
     const temp = document.createElement("canvas");
     temp.width = webglCanvas.width;
     temp.height = webglCanvas.height;
     const ctx = temp.getContext("2d");
-
     ctx.drawImage(webglCanvas, 0, 0);
 
     const imgData = ctx.getImageData(0, 0, temp.width, temp.height);
@@ -48,11 +46,10 @@ function sobelEdge(webglCanvas) {
     return edgeCanvas;
   } catch (e) {
     console.error("Sobel edge failed:", e);
-    alert("Falha ao gerar bordas do BIM");
+    alert("Erro ao gerar bordas do modelo");
     return null;
   }
 }
-
 
 export default function TelaInicial() {
 
@@ -62,9 +59,8 @@ export default function TelaInicial() {
   const [viewingHistoryItem, setViewingHistoryItem] = useState(null);
 
   const [bimEntry, setBimEntry] = useState(null);
-  const [fotoEntry] = useState(null);
-
   const [report, setReport] = useState(null);
+
   const [snapshotImg, setSnapshotImg] = useState(null);
   const [progressMsg, setProgressMsg] = useState("Aguardando arquivo...");
   const [progressPct, setProgressPct] = useState(0);
@@ -90,23 +86,25 @@ export default function TelaInicial() {
   };
 
   const carregarHistorico = async () => {
-    const { data } = await supabase.storage
-      .from(BUCKET)
-      .list(`arquivos/${username}`, { limit: 100, sortBy: { column: "updated_at", order: "desc" } });
+    try {
+      const { data } = await supabase.storage
+        .from(BUCKET)
+        .list(`arquivos/${username}`, { limit: 100, sortBy: { column: "updated_at", order: "desc" } });
 
-    if (!data) return;
+      if (!data) return;
 
-    const arr = data.map(f => {
-      const { data:url } = supabase.storage.from(BUCKET)
-        .getPublicUrl(`arquivos/${username}/${f.name}`);
-      return {
-        nome: f.name,
-        url: url.publicUrl,
-        tipo: getTipoArquivo(f.name),
-        data: new Date(f.updated_at || f.created_at).toLocaleString()
-      };
-    });
-    setHistorico(arr);
+      const arr = data.map(f => {
+        const { data: url } = supabase.storage.from(BUCKET)
+          .getPublicUrl(`arquivos/${username}/${f.name}`);
+        return {
+          nome: f.name,
+          url: url.publicUrl,
+          tipo: getTipoArquivo(f.name),
+          data: new Date(f.updated_at || f.created_at).toLocaleString()
+        };
+      });
+      setHistorico(arr);
+    } catch(e){ console.error(e); }
   };
 
   useEffect(()=>{ carregarHistorico(); },[]);
@@ -116,7 +114,7 @@ export default function TelaInicial() {
     const path = `arquivos/${username}/${fname}`;
     await supabase.storage.from(BUCKET).upload(path, file);
     const { data:url } = supabase.storage.from(BUCKET).getPublicUrl(path);
-    return { nome: fname, url: url.publicUrl, tipo: getTipoArquivo(fname), data: new Date().toLocaleString() };
+    return { nome: fname, url:url.publicUrl, tipo:getTipoArquivo(fname), data:new Date().toLocaleString() };
   }
 
   const handleBimChange = async (e) => {
@@ -124,37 +122,32 @@ export default function TelaInicial() {
     if(!file) return;
     setStatus("processando");
     setProgressMsg("Carregando IFC...");
-    try{
+
+    try {
       const entry = await uploadToSupabase(file);
       setBimEntry(entry);
       setViewingHistoryItem(null);
       setStatus("concluída");
-      setTimeout(carregarHistorico, 500);
+      setTimeout(carregarHistorico,500);
     } catch {
       setStatus("falhou");
+      alert("Falha ao fazer upload do IFC");
     }
   };
 
   const handleDeleteFile = async (nome) => {
-    const ok = confirm(`Remover "${nome}" do histórico?`);
+    const ok = confirm(`Excluir ${nome}?`);
     if (!ok) return;
-
-    try {
-      await supabase.storage.from(BUCKET).remove([`arquivos/${username}/${nome}`]);
-      if (bimEntry?.nome === nome) setBimEntry(null);
-      await carregarHistorico();
-    } catch {
-      alert("Erro ao excluir arquivo");
-    }
+    await supabase.storage.from(BUCKET).remove([`arquivos/${username}/${nome}`]);
+    if (bimEntry?.nome === nome) setBimEntry(null);
+    carregarHistorico();
   };
 
   function dataURLtoFile(dataurl, filename) {
     const arr = dataurl.split(",");
     const mime = arr[0].match(/:(.*?);/)[1];
     const bstr = atob(arr[1]);
-    let n = bstr.length;
-    const u8 = new Uint8Array(n);
-    while (n--) u8[n] = bstr.charCodeAt(n);
+    const u8 = Uint8Array.from([...bstr].map(c => c.charCodeAt(0)));
     return new File([u8], filename, { type: mime });
   }
 
@@ -162,31 +155,26 @@ export default function TelaInicial() {
     const res = await fetch(url);
     const reader = res.body?.getReader();
     const total = Number(res.headers.get("content-length") || 0);
+    if (!reader) return res.arrayBuffer();
 
-    if (!reader) return (await res.arrayBuffer());
     let mem = new Uint8Array(Math.max(total, 3000000));
     let off = 0;
-
     while(true){
       const {value,done} = await reader.read();
-      if(done) break;
-      mem.set(value,off);
-      off+=value.length;
-      const pct = total ? Math.round((off/total)*100) : Math.min(99, off/50000);
-      setProgressPct(pct);
-      setProgressMsg(`Carregando IFC: ${pct}%`);
+      if (done) break;
+      mem.set(value,off); off+=value.length;
+      setProgressPct(total? Math.round((off/total)*100) : Math.min(99,off/50000));
     }
     setProgressPct(100);
     return mem.slice(0,off).buffer;
   }
 
-  // ========== Renderiza IFC ==========
+  // Render IFC
   useEffect(()=>{
-    let disposed = false;
-    (async()=>{
+    let disposed=false;
+    (async ()=>{
       const file = viewingHistoryItem?.tipo==="modelo" ? viewingHistoryItem : bimEntry;
       if (!file?.url) return;
-
       const ext = file.nome.split(".").pop().toLowerCase();
       if (!["ifc","gz","ifc.gz"].includes(ext)) return;
 
@@ -194,138 +182,121 @@ export default function TelaInicial() {
       if (!container) return;
       container.innerHTML="";
 
-      const scene = new Scene();
-      scene.background = new Color("#ffffff");
-
-      const camera = new PerspectiveCamera(60, container.clientWidth/400, 0.1, 9999999);
-      const renderer = new WebGLRenderer({ antialias:true, preserveDrawingBuffer:true });
+      const scene=new Scene();
+      scene.background=new Color("#fff");
+      const camera=new PerspectiveCamera(60, container.clientWidth/400, 0.1, 9999);
+      const renderer=new WebGLRenderer({antialias:true,preserveDrawingBuffer:true});
       rendererRef.current = renderer;
-      renderer.setPixelRatio(window.devicePixelRatio);
-      renderer.setSize(container.clientWidth, 400);
+      renderer.setSize(container.clientWidth,400);
       container.appendChild(renderer.domElement);
 
-      const { OrbitControls } = await import("three/examples/jsm/controls/OrbitControls.js");
-      const controls = new OrbitControls(camera,renderer.domElement);
-
       scene.add(new AmbientLight(1.2));
-      const light = new DirectionalLight(0xffffff,1.2);
-      light.position.set(10,10,10);
-      scene.add(light);
+      const dl=new DirectionalLight(0xffffff,1.2);
+      dl.position.set(10,10,10);
+      scene.add(dl);
 
       const raw = await fetchIFCBuffer(`${file.url}?t=${Date.now()}`);
-      const buf = /\.gz$/i.test(file.nome) ? pako.ungzip(new Uint8Array(raw)).buffer : raw;
-      const blobURL = URL.createObjectURL(new Blob([buf]));
+      const buf = /\.gz$/.test(file.nome) ? pako.ungzip(new Uint8Array(raw)).buffer : raw;
       const loader=new IFCLoader();
       loader.ifcManager.setWasmPath("/");
+      const blobURL = URL.createObjectURL(new Blob([buf]));
+
+      const {OrbitControls}=await import("three/examples/jsm/controls/OrbitControls.js");
+      const controls = new OrbitControls(camera,renderer.domElement);
 
       loader.load(blobURL,(model)=>{
-        if (disposed) return;
-
-        model.traverse(obj=>{
-          if (obj.isMesh) {
-            obj.material = new MeshStandardMaterial({
-              color:"#d9d9d9",
-              metalness:0.25,
-              roughness:0.8
-            });
-          }
-        });
-
+        if(disposed) return;
+        model.traverse(o=>{ if(o.isMesh) o.material=new MeshStandardMaterial({color:"#d9d9d9",metalness:.25,roughness:.8});});
         scene.add(model);
-        const box = new Box3().setFromObject(model);
-        const center = box.getCenter(new Vector3());
-        const size = box.getSize(new Vector3()).length();
-        const dist = size/(2*Math.tan((Math.PI*camera.fov)/360));
-        controls.target.copy(center);
-        camera.position.copy(center.clone().add(new Vector3(dist,dist,dist)));
-        camera.lookAt(center);
-        setProgressMsg("Modelo carregado");
-        setProgressPct(100);
+        const box=new Box3().setFromObject(model);
+        const c=box.getCenter(new Vector3());
+        const size=box.getSize(new Vector3()).length();
+        const dist=size/(2*Math.tan((Math.PI*camera.fov)/360));
+        controls.target.copy(c);
+        camera.position.copy(c.clone().add(new Vector3(dist,dist,dist)));
+        camera.lookAt(c);
 
-        function animate(){
-          if (disposed) return;
-          requestAnimationFrame(animate);
+        function loop(){
+          if(disposed) return;
+          requestAnimationFrame(loop);
           controls.update();
           renderer.render(scene,camera);
         }
-        animate();
+        loop();
       });
-
       return ()=>{ disposed=true; renderer.dispose(); };
     })();
   },[bimEntry?.url, viewingHistoryItem?.url]);
 
-  // ✅ Gera sobel + abre modal
   const prepararSnapshot = () => {
     const canvas = rendererRef.current?.domElement;
-    if (!canvas) return alert("Render não encontrado");
-
+    if(!canvas) return alert("Modelo não renderizado ainda");
     const edgeCanvas = sobelEdge(canvas);
-    if (!edgeCanvas) return;
-
-    const snapshot = edgeCanvas.toDataURL();
-    setSnapshotImg(snapshot);
+    if(!edgeCanvas) return;
+    setSnapshotImg(edgeCanvas.toDataURL());
     setShowCompareModal(true);
   };
 
   const enviarComparacaoModal = async () => {
-    if (!snapshotImg) return alert("Gere snapshot primeiro");
-    if (!modalPhotoFile) return alert("Anexe uma foto");
+    if (!snapshotImg) return alert("Capture primeiro");
+    if (!modalPhotoFile) return alert("Selecione uma foto");
 
     setStatus("processando");
-    setModalProgressPct(30);
-    setReport(null);
+    setModalProgressPct(40);
+    const snap = dataURLtoFile(snapshotImg,"snapshot.png");
+    const prev = progressoObra.length? progressoObra[progressoObra.length-1].porcentagem : 0;
 
-    const snapshotFile = dataURLtoFile(snapshotImg, "snapshot-bim-edges.png");
-    const fd = new FormData();
-    fd.append("compare", "true");
-    fd.append("fileA", snapshotFile);
-    fd.append("fileB", modalPhotoFile);
-    fd.append("username", username);
+    const fd=new FormData();
+    fd.append("fileA",snap);
+    fd.append("fileB",modalPhotoFile);
+    fd.append("prevProgress",String(prev));
+    fd.append("username",username);
 
     try{
-      const r = await fetch(ANALYZE_URL, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
-        body: fd,
+      const r=await fetch(ANALYZE_URL,{
+        method:"POST",
+        headers:{Authorization:`Bearer ${SUPABASE_ANON_KEY}`},
+        body:fd
       });
-
-      setModalProgressPct(70);
       const out = await r.json();
-      if (!r.ok || out.status !== "ok") throw new Error(out.message);
+      if (!r.ok || out.status!=="ok") throw new Error(out.message);
 
-      setReport(out);
-      setModalProgressPct(100);
-      setResultTextBox(`Progresso: ${Number(out.progresso).toFixed(1)}% \n${out.textoFaltas}`);
+      const similar = Number(out.similaridade_atual||0);
+      const prog = Number(out.progresso_global||similar);
 
-      setProgressoObra(p => [...p, {
-        porcentagem: out.progresso,
-        data: new Date().toLocaleString()
+      setResultTextBox(`Similaridade: ${similar.toFixed(1)}%\nProgresso: ${prog.toFixed(1)}%\n${out.textoFaltas||""}`);
+
+      setProgressoObra(p=>[...p,{
+        porcentagem:prog,
+        data:new Date().toLocaleString()
       }]);
 
-      setAlertas(out.alertas || []);
+      setReport(out);
+      setAlertas(out.alertas||[]);
+      setModalProgressPct(100);
       setStatus("concluída");
 
     } catch(e){
+      console.error(e);
+      alert("Erro ao comparar");
       setStatus("falhou");
-      alert(e.message);
     } finally {
       setTimeout(()=>{
         setShowCompareModal(false);
         setModalPhotoFile(null);
         setModalPhotoPreview(null);
         setModalProgressPct(0);
-      },900);
+      },600);
     }
   };
 
   const PainelProgresso = () => {
-    if (!progressoObra.length) return null;
+    if(!progressoObra.length) return null;
     const data = {
-      labels: progressoObra.map(p=>p.data),
-      datasets: [{
-        label:"Avanço (%)",
-        data: progressoObra.map(p=>p.porcentagem),
+      labels:progressoObra.map(p=>p.data),
+      datasets:[{
+        label:"Avanço da Obra (%)",
+        data:progressoObra.map(p=>p.porcentagem),
         borderColor:"#0050d6",
         backgroundColor:"rgba(0,80,214,.25)"
       }]
@@ -334,34 +305,30 @@ export default function TelaInicial() {
       <div style={{marginTop:25}}>
         <h3>Histórico de Progresso</h3>
         <div style={{height:"200px"}}><Line data={data}/></div>
-        {alertas.map((a,i)=><p key={i} style={{color:"red"}}>{a}</p>)}
       </div>
     );
   };
 
   const RelatorioComparacao = () => {
-    if (!report) return null;
-    const { progresso, textoFaltas, detalhePorClasse = {} } = report;
-    const linhas = Object.entries(detalhePorClasse).map(([cls, det])=>({...det,cls}));
-    const totalClasses = linhas.length;
-    const totalEsperado = linhas.reduce((s,x)=>s+x.esperado,0);
-    const totalDetectado = linhas.reduce((s,x)=>s+x.detectado,0);
+    if(!report) return null;
+
+    const s = Number(report.similaridade_atual||0).toFixed(1);
+    const p = Number(report.progresso_global||s).toFixed(1);
+    const linhas = Object.entries(report.detalhePorClasse||{}).map(([cls,det])=>({...det,cls}));
 
     return (
       <div style={{marginTop:25}}>
-        <h3>Resultado da comparação</h3>
+        <h3>Resultado da Comparação</h3>
 
         <div className="dashboard-cards">
-          <div className="dash-card"><h4>Progresso</h4><p>{Number(progresso).toFixed(1)}%</p></div>
-          <div className="dash-card"><h4>Classes</h4><p>{totalClasses}</p></div>
-          <div className="dash-card"><h4>Esperado</h4><p>{totalEsperado}</p></div>
-          <div className="dash-card"><h4>Detectado</h4><p>{totalDetectado}</p></div>
+          <div className="dash-card"><h4>Similaridade</h4><p>{s}%</p></div>
+          <div className="dash-card"><h4>Progresso Global</h4><p>{p}%</p></div>
         </div>
 
         <div className="report success">
-          <p><strong>Resumo:</strong> {textoFaltas}</p>
+          <p><strong>Resumo:</strong> {report.textoFaltas}</p>
 
-          <div style={{overflowX:"auto", marginTop:10}}>
+          <div style={{overflowX:"auto",marginTop:10}}>
             <table className="relatorio-tabela">
               <thead>
                 <tr>
@@ -369,7 +336,7 @@ export default function TelaInicial() {
                 </tr>
               </thead>
               <tbody>
-                {linhas.map((l,i)=>(
+                {linhas.length>0 && linhas.map((l,i)=>(
                   <tr key={i}>
                     <td>{l.cls}</td>
                     <td>{l.esperado}</td>
@@ -378,9 +345,7 @@ export default function TelaInicial() {
                     <td>{l.faltando}</td>
                   </tr>
                 ))}
-                {!linhas.length && (
-                  <tr><td colSpan={5}>Sem classes detectadas</td></tr>
-                )}
+                {!linhas.length && <tr><td colSpan={5}>Sem classes detectadas</td></tr>}
               </tbody>
             </table>
           </div>
@@ -391,8 +356,6 @@ export default function TelaInicial() {
 
   return (
 <div className="tela-container">
-
-  {/* Top Bar */}
   <div className="top-bar">
     <div className="status-container">
       {status==="não iniciada" && <MdNotStarted className="status-icon not-started"/>}
@@ -412,54 +375,32 @@ export default function TelaInicial() {
     </div>
   </div>
 
-  {/* Sidebar */}
   <div className={`sidebar ${sidebarOpen ? "open" : ""}`}>
     <h3>Histórico</h3>
     {historico.map((h,i)=>(
       <div key={i} className="history-item"
         onClick={()=>{
           setViewingHistoryItem(h);
-          if (h.tipo === "modelo") setBimEntry(h);
+          if(h.tipo==="modelo") setBimEntry(h);
           setSnapshotImg(null);
-        }}
-      >
+        }}>
         <div style={{flex:1}}>
           <p>{h.nome}</p>
           <small>{h.data}</small>
         </div>
-
-        <MdDelete
-          style={{cursor:"pointer",color:"#c00"}}
-          onClick={(e)=>{
-            e.stopPropagation();
-            handleDeleteFile(h.nome);
-          }}
-        />
+        <MdDelete style={{cursor:"pointer",color:"#c00"}} onClick={(e)=>{e.stopPropagation();handleDeleteFile(h.nome);}}/>
       </div>
     ))}
   </div>
 
-  {/* Content */}
   <div className="content">
     <div className="content-inner">
 
-      <div className="uploader-grid">
-        <label htmlFor="bim-upload" className="upload-area">
-          <FaFileUpload className="upload-icon"/>
-          <p>Selecionar BIM (.ifc / .ifc.gz)</p>
-        </label>
-        <input
-          id="bim-upload"
-          type="file"
-          accept=".ifc,.ifc.gz,.gz"
-          style={{ display: "none" }}
-          onChange={handleBimChange}
-        />
-      </div>
-
-      <div className="file-chips">
-        {bimEntry && (<div className="file-display"><FaFileAlt/> {bimEntry.nome}</div>)}
-      </div>
+      <label htmlFor="bim-upload" className="upload-area">
+        <FaFileUpload className="upload-icon"/>
+        <p>Selecionar BIM (.ifc / .ifc.gz)</p>
+      </label>
+      <input id="bim-upload" type="file" accept=".ifc,.ifc.gz,.gz" style={{display:"none"}} onChange={handleBimChange} />
 
       {bimEntry && (
         <div className="report success" style={{marginTop:16}}>
@@ -468,24 +409,9 @@ export default function TelaInicial() {
 
           <div ref={viewerRef} className="ifc-viewer-container"/>
 
-          <button
-            onClick={prepararSnapshot}
-            className="capture-btn"
-          >
-            Comparar
-          </button>
+          <button onClick={prepararSnapshot} className="capture-btn">Comparar</button>
 
-          <textarea
-            value={resultTextBox}
-            readOnly
-            placeholder="Resultado..."
-            style={{
-              width:"100%", minHeight:90,
-              marginTop:10, padding:10,
-              borderRadius:8, background:"#fff", color:"#000",
-              border:"1px solid #ccc"
-            }}
-          />
+          <textarea value={resultTextBox} readOnly placeholder="Resultado..." style={{width:"100%",minHeight:100,marginTop:10,padding:10,borderRadius:8,background:"#fff",color:"#000",border:"1px solid #ccc"}}/>
         </div>
       )}
 
@@ -495,15 +421,13 @@ export default function TelaInicial() {
     </div>
   </div>
 
-
-  {/* MODAL */}
   {showCompareModal && (
     <div className="modal-backdrop">
       <div className="modal-content">
         <h3>Comparar Snapshot × Foto</h3>
 
         <div className="progress-bar">
-          <div style={{width:`${modalProgressPct}%`, background:"#00c853"}}/>
+          <div style={{width:`${modalProgressPct}%`,background:"#00c853"}}/>
         </div>
 
         <div className="compare-grid">
@@ -513,31 +437,18 @@ export default function TelaInicial() {
           </div>
 
           <div className="compare-box">
-            <p>Anexar foto</p>
+            <p>Foto da Obra</p>
             <label htmlFor="modal-photo-upload" className="upload-area" style={{minHeight:120}}>
               <FaFileUpload className="upload-icon"/>
               <span>Escolher foto</span>
             </label>
-
-            <input
-              id="modal-photo-upload"
-              type="file"
-              accept=".jpg,.jpeg,.png,.webp"
-              style={{display:"none"}}
-              onChange={(e)=>{
-                const f = e.target.files?.[0];
-                if (!f) return;
-                setModalPhotoFile(f);
-                setModalPhotoPreview(URL.createObjectURL(f));
-              }}
-            />
-
-            {modalPhotoPreview && (
-              <div style={{marginTop:10}}>
-                <small>Selecionada:</small>
-                <img src={modalPhotoPreview} className="compare-img" alt="foto"/>
-              </div>
-            )}
+            <input id="modal-photo-upload" type="file" accept=".jpg,.jpeg,.png,.webp" style={{display:"none"}} onChange={(e)=>{
+              const f=e.target.files?.[0];
+              if(!f) return;
+              setModalPhotoFile(f);
+              setModalPhotoPreview(URL.createObjectURL(f));
+            }}/>
+            {modalPhotoPreview && <img src={modalPhotoPreview} className="compare-img" alt="foto"/>}
           </div>
         </div>
 
@@ -548,9 +459,7 @@ export default function TelaInicial() {
             setModalPhotoFile(null);
             setModalPhotoPreview(null);
             setModalProgressPct(0);
-          }}>
-            Cancelar
-          </button>
+          }}>Cancelar</button>
         </div>
       </div>
     </div>
