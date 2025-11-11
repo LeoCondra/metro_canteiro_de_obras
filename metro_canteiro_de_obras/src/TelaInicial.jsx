@@ -1,9 +1,7 @@
-// TelaInicial.jsx — Progresso Sniper alinhado com artigo (sem similaridade visível)
-
 import { useState, useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
 
-import { FaUserCircle, FaFileUpload, FaFileAlt } from "react-icons/fa";
+import { FaUserCircle, FaFileUpload } from "react-icons/fa";
 import {
   MdNotStarted, MdAutorenew, MdCheckCircle, MdCancel,
   MdMenu, MdClose, MdHistory, MdDelete
@@ -13,7 +11,6 @@ import {
   Scene, PerspectiveCamera, WebGLRenderer, Color,
   AmbientLight, DirectionalLight, Box3, Vector3, MeshStandardMaterial
 } from "three";
-
 import { IFCLoader } from "web-ifc-three/IFCLoader";
 import pako from "pako";
 
@@ -81,7 +78,6 @@ export default function TelaInicial() {
   const location = useLocation();
   const username = location.state?.username || "Usuário";
 
-  // === util helpers ===
   const getTipoArquivo = (f) => {
     const ext = f.split(".").pop().toLowerCase();
     return ["jpg","jpeg","png","webp"].includes(ext) ? "imagem" : "modelo";
@@ -148,7 +144,6 @@ export default function TelaInicial() {
     return new File([u8], filename, { type: mime });
   }
 
-  // === fetch IFC with progress ===
   async function fetchIFCBuffer(url){
     const res = await fetch(url);
     const reader = res.body?.getReader();
@@ -170,35 +165,44 @@ export default function TelaInicial() {
     return mem.slice(0,off).buffer;
   }
 
-  // === Render IFC ===
-  useEffect(()=>{
-    let disposed=false;
-    (async ()=>{
-      const file = viewingHistoryItem?.tipo==="modelo" ? viewingHistoryItem : bimEntry;
-      if(!file?.url) return;
+  // ✅ Anti-flicker IFC Viewer
+  useEffect(() => {
+    let disposed = false;
+    let animationId;
+
+    (async () => {
+      const file = viewingHistoryItem?.tipo === "modelo" ? viewingHistoryItem : bimEntry;
+      if (!file?.url) return;
 
       const container = viewerRef.current;
-      if(!container) return;
-      container.innerHTML="";
+      if (!container) return;
 
-      const scene=new Scene();
-      scene.background=new Color("#fff");
-      const camera=new PerspectiveCamera(60,container.clientWidth/400,0.1,9999);
-      const renderer=new WebGLRenderer({antialias:true,preserveDrawingBuffer:true});
-      rendererRef.current = renderer;
-      renderer.setSize(container.clientWidth,400);
-      container.appendChild(renderer.domElement);
+      // reuse renderer (prevents blinking)
+      let renderer = rendererRef.current;
+      if (!renderer) {
+        renderer = new WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+        rendererRef.current = renderer;
+        renderer.setSize(container.clientWidth, 400);
+        container.appendChild(renderer.domElement);
+      }
+
+      const scene = new Scene();
+      scene.background = new Color("#fff");
+      const camera = new PerspectiveCamera(60, container.clientWidth / 400, 0.1, 9999);
 
       scene.add(new AmbientLight(1.2));
-      const dl=new DirectionalLight(0xffffff,1.2); dl.position.set(5,10,10);
+      const dl = new DirectionalLight(0xffffff, 1.2);
+      dl.position.set(5, 10, 10);
       scene.add(dl);
 
-      const raw=await fetchIFCBuffer(`${file.url}?t=${Date.now()}`);
-      const buf=/\.gz$/.test(file.nome)? pako.ungzip(new Uint8Array(raw)).buffer : raw;
-      const {OrbitControls}=await import("three/examples/jsm/controls/OrbitControls.js");
-      const controls = new OrbitControls(camera,renderer.domElement);
+      const raw = await fetchIFCBuffer(`${file.url}?t=${Date.now()}`);
+      const buf = /\.gz$/.test(file.nome) ? pako.ungzip(new Uint8Array(raw)).buffer : raw;
 
-      const loader=new IFCLoader(); loader.ifcManager.setWasmPath("/");
+      const { OrbitControls } = await import("three/examples/jsm/controls/OrbitControls.js");
+      const controls = new OrbitControls(camera, renderer.domElement);
+
+      const loader = new IFCLoader();
+      loader.ifcManager.setWasmPath("/");
       const blobURL = URL.createObjectURL(new Blob([buf]));
 
       loader.load(blobURL,(model)=>{
@@ -215,15 +219,24 @@ export default function TelaInicial() {
         camera.position.copy(c.clone().add(new Vector3(dist,dist,dist)));
         camera.lookAt(c);
 
-        const loop=()=>{ if(disposed) return; requestAnimationFrame(loop); controls.update(); renderer.render(scene,camera); };
+        const loop=()=>{ 
+          if(disposed) return; 
+          animationId = requestAnimationFrame(loop); 
+          controls.update(); 
+          renderer.render(scene,camera); 
+        };
         loop();
       });
 
-      return ()=>{ disposed=true; renderer.dispose(); };
     })();
-  },[bimEntry?.url, viewingHistoryItem?.url]);
 
-  // === Comparação ===
+    return () => {
+      disposed = true;
+      if (animationId) cancelAnimationFrame(animationId);
+    };
+  }, [bimEntry?.url, viewingHistoryItem?.url]);
+
+  // === Comparar
   const prepararSnapshot = () => {
     const canvas = rendererRef.current?.domElement;
     if(!canvas) return alert("Render não pronto");
@@ -277,7 +290,6 @@ export default function TelaInicial() {
     }
   };
 
-  // === Gráfico progresso ===
   const PainelProgresso = () => {
     if(!progressoObra.length) return null;
 
@@ -299,7 +311,6 @@ export default function TelaInicial() {
     );
   };
 
-  // === Relatório agora só progresso + classes BIM ===
   const RelatorioComparacao = () => {
     if (!report) return null;
 
@@ -346,7 +357,6 @@ export default function TelaInicial() {
     );
   };
 
-  // === UI ===
   return (
 <div className="tela-container">
 
