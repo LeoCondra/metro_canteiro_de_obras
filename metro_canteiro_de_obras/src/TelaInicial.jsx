@@ -1,4 +1,5 @@
-// TelaInicial.jsx — alinhado com backend sniper supremo (sem delta)
+// TelaInicial.jsx — Progresso Sniper alinhado com artigo (sem similaridade visível)
+
 import { useState, useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
 
@@ -24,9 +25,9 @@ ChartJS.register(LineElement, CategoryScale, LinearScale, PointElement);
 
 import { supabase, BUCKET, ANALYZE_URL, SUPABASE_ANON_KEY } from "./Supabase";
 import "./TelaInicial.css";
-
 import sobel from "sobel";
 
+// === Sobel do BIM ===
 function sobelEdge(webglCanvas) {
   try {
     const temp = document.createElement("canvas");
@@ -45,8 +46,8 @@ function sobelEdge(webglCanvas) {
 
     return edgeCanvas;
   } catch (e) {
-    console.error("Sobel edge failed:", e);
-    alert("Erro ao gerar bordas do modelo");
+    console.error("Sobel error:", e);
+    alert("Erro ao gerar bordas do BIM");
     return null;
   }
 }
@@ -80,49 +81,47 @@ export default function TelaInicial() {
   const location = useLocation();
   const username = location.state?.username || "Usuário";
 
+  // === util helpers ===
   const getTipoArquivo = (f) => {
     const ext = f.split(".").pop().toLowerCase();
     return ["jpg","jpeg","png","webp"].includes(ext) ? "imagem" : "modelo";
   };
 
-  const carregarHistorico = async () => {
-    try {
-      const { data } = await supabase.storage
-        .from(BUCKET)
-        .list(`arquivos/${username}`, { limit: 100, sortBy: { column: "updated_at", order: "desc" } });
+  async function carregarHistorico() {
+    const { data } = await supabase.storage
+      .from(BUCKET)
+      .list(`arquivos/${username}`, { limit:100 });
 
-      if (!data) return;
+    if (!data) return;
 
-      const arr = data.map(f => {
-        const { data: url } = supabase.storage.from(BUCKET)
-          .getPublicUrl(`arquivos/${username}/${f.name}`);
-        return {
-          nome: f.name,
-          url: url.publicUrl,
-          tipo: getTipoArquivo(f.name),
-          data: new Date(f.updated_at || f.created_at).toLocaleString()
-        };
-      });
-      setHistorico(arr);
-    } catch(e){ console.error(e); }
-  };
+    const files = data.map(f => {
+      const { data:url } = supabase.storage.from(BUCKET)
+        .getPublicUrl(`arquivos/${username}/${f.name}`);
+      return {
+        nome: f.name,
+        url: url.publicUrl,
+        tipo: getTipoArquivo(f.name),
+        data: new Date(f.updated_at || f.created_at).toLocaleString()
+      };
+    });
+
+    setHistorico(files);
+  }
 
   useEffect(()=>{ carregarHistorico(); },[]);
 
   async function uploadToSupabase(file){
     const fname = `${Date.now()}-${file.name}`;
     const path = `arquivos/${username}/${fname}`;
-    await supabase.storage.from(BUCKET).upload(path, file);
+    await supabase.storage.from(BUCKET).upload(path,file);
     const { data:url } = supabase.storage.from(BUCKET).getPublicUrl(path);
     return { nome: fname, url:url.publicUrl, tipo:getTipoArquivo(fname), data:new Date().toLocaleString() };
   }
 
   const handleBimChange = async (e) => {
     const file = e.target.files[0];
-    if(!file) return;
-    setStatus("processando");
-    setProgressMsg("Carregando IFC...");
-
+    if (!file) return;
+    setStatus("processando"); setProgressMsg("Carregando IFC...");
     try {
       const entry = await uploadToSupabase(file);
       setBimEntry(entry);
@@ -130,20 +129,18 @@ export default function TelaInicial() {
       setStatus("concluída");
       setTimeout(carregarHistorico,500);
     } catch {
-      setStatus("falhou");
-      alert("Falha ao fazer upload do IFC");
+      setStatus("falhou"); alert("Erro no upload do IFC");
     }
   };
 
   const handleDeleteFile = async (nome) => {
-    const ok = confirm(`Excluir ${nome}?`);
-    if (!ok) return;
+    if (!confirm(`Excluir ${nome}?`)) return;
     await supabase.storage.from(BUCKET).remove([`arquivos/${username}/${nome}`]);
     if (bimEntry?.nome === nome) setBimEntry(null);
     carregarHistorico();
   };
 
-  function dataURLtoFile(dataurl, filename) {
+  function dataURLtoFile(dataurl, filename){
     const arr = dataurl.split(",");
     const mime = arr[0].match(/:(.*?);/)[1];
     const bstr = atob(arr[1]);
@@ -151,86 +148,85 @@ export default function TelaInicial() {
     return new File([u8], filename, { type: mime });
   }
 
+  // === fetch IFC with progress ===
   async function fetchIFCBuffer(url){
     const res = await fetch(url);
     const reader = res.body?.getReader();
-    const total = Number(res.headers.get("content-length") || 0);
+    const total = Number(res.headers.get("content-length")||0);
     if (!reader) return res.arrayBuffer();
 
     let mem = new Uint8Array(Math.max(total, 3000000));
     let off = 0;
+
     while(true){
       const {value,done} = await reader.read();
-      if (done) break;
-      mem.set(value,off); off+=value.length;
+      if(done) break;
+
+      mem.set(value,off);
+      off += value.length;
       setProgressPct(total? Math.round((off/total)*100) : Math.min(99,off/50000));
     }
     setProgressPct(100);
     return mem.slice(0,off).buffer;
   }
 
-  // Render IFC
+  // === Render IFC ===
   useEffect(()=>{
     let disposed=false;
     (async ()=>{
       const file = viewingHistoryItem?.tipo==="modelo" ? viewingHistoryItem : bimEntry;
-      if (!file?.url) return;
-      const ext = file.nome.split(".").pop().toLowerCase();
-      if (!["ifc","gz","ifc.gz"].includes(ext)) return;
+      if(!file?.url) return;
 
       const container = viewerRef.current;
-      if (!container) return;
+      if(!container) return;
       container.innerHTML="";
 
       const scene=new Scene();
       scene.background=new Color("#fff");
-      const camera=new PerspectiveCamera(60, container.clientWidth/400, 0.1, 9999);
+      const camera=new PerspectiveCamera(60,container.clientWidth/400,0.1,9999);
       const renderer=new WebGLRenderer({antialias:true,preserveDrawingBuffer:true});
       rendererRef.current = renderer;
       renderer.setSize(container.clientWidth,400);
       container.appendChild(renderer.domElement);
 
       scene.add(new AmbientLight(1.2));
-      const dl=new DirectionalLight(0xffffff,1.2);
-      dl.position.set(10,10,10);
+      const dl=new DirectionalLight(0xffffff,1.2); dl.position.set(5,10,10);
       scene.add(dl);
 
-      const raw = await fetchIFCBuffer(`${file.url}?t=${Date.now()}`);
-      const buf = /\.gz$/.test(file.nome) ? pako.ungzip(new Uint8Array(raw)).buffer : raw;
-      const loader=new IFCLoader();
-      loader.ifcManager.setWasmPath("/");
-      const blobURL = URL.createObjectURL(new Blob([buf]));
-
+      const raw=await fetchIFCBuffer(`${file.url}?t=${Date.now()}`);
+      const buf=/\.gz$/.test(file.nome)? pako.ungzip(new Uint8Array(raw)).buffer : raw;
       const {OrbitControls}=await import("three/examples/jsm/controls/OrbitControls.js");
       const controls = new OrbitControls(camera,renderer.domElement);
 
+      const loader=new IFCLoader(); loader.ifcManager.setWasmPath("/");
+      const blobURL = URL.createObjectURL(new Blob([buf]));
+
       loader.load(blobURL,(model)=>{
         if(disposed) return;
-        model.traverse(o=>{ if(o.isMesh) o.material=new MeshStandardMaterial({color:"#d9d9d9",metalness:.25,roughness:.8});});
+        model.traverse(o=>{ if(o.isMesh) o.material=new MeshStandardMaterial({color:"#d9d9d9"});});
         scene.add(model);
+
         const box=new Box3().setFromObject(model);
         const c=box.getCenter(new Vector3());
         const size=box.getSize(new Vector3()).length();
-        const dist=size/(2*Math.tan((Math.PI*camera.fov)/360));
+        const dist = size/(2*Math.tan((Math.PI*camera.fov)/360));
+
         controls.target.copy(c);
         camera.position.copy(c.clone().add(new Vector3(dist,dist,dist)));
         camera.lookAt(c);
 
-        function loop(){
-          if(disposed) return;
-          requestAnimationFrame(loop);
-          controls.update();
-          renderer.render(scene,camera);
-        }
+        const loop=()=>{ if(disposed) return; requestAnimationFrame(loop); controls.update(); renderer.render(scene,camera); };
         loop();
       });
+
       return ()=>{ disposed=true; renderer.dispose(); };
     })();
   },[bimEntry?.url, viewingHistoryItem?.url]);
 
+  // === Comparação ===
   const prepararSnapshot = () => {
     const canvas = rendererRef.current?.domElement;
-    if(!canvas) return alert("Modelo não renderizado ainda");
+    if(!canvas) return alert("Render não pronto");
     const edgeCanvas = sobelEdge(canvas);
     if(!edgeCanvas) return;
     setSnapshotImg(edgeCanvas.toDataURL());
@@ -239,10 +235,11 @@ export default function TelaInicial() {
 
   const enviarComparacaoModal = async () => {
     if (!snapshotImg) return alert("Capture primeiro");
-    if (!modalPhotoFile) return alert("Selecione uma foto");
+    if (!modalPhotoFile) return alert("Selecione foto");
 
     setStatus("processando");
     setModalProgressPct(40);
+
     const snap = dataURLtoFile(snapshotImg,"snapshot.png");
     const prev = progressoObra.length? progressoObra[progressoObra.length-1].porcentagem : 0;
 
@@ -253,24 +250,14 @@ export default function TelaInicial() {
     fd.append("username",username);
 
     try{
-      const r=await fetch(ANALYZE_URL,{
-        method:"POST",
-        headers:{Authorization:`Bearer ${SUPABASE_ANON_KEY}`},
-        body:fd
-      });
-      const out = await r.json();
-      if (!r.ok || out.status!=="ok") throw new Error(out.message);
+      const r=await fetch(ANALYZE_URL,{method:"POST",headers:{Authorization:`Bearer ${SUPABASE_ANON_KEY}`},body:fd});
+      const out=await r.json();
+      if(out.status!=="ok") throw new Error(out.message);
 
-      const similar = Number(out.similaridade_atual||0);
-      const prog = Number(out.progresso_global||similar);
+      const prog = Number(out.progresso_global ?? out.progresso ?? 0);
+      setResultTextBox(`Progresso: ${prog.toFixed(1)}%\n${out.textoFaltas||""}`);
 
-      setResultTextBox(`Similaridade: ${similar.toFixed(1)}%\nProgresso: ${prog.toFixed(1)}%\n${out.textoFaltas||""}`);
-
-      setProgressoObra(p=>[...p,{
-        porcentagem:prog,
-        data:new Date().toLocaleString()
-      }]);
-
+      setProgressoObra(p=>[...p,{porcentagem:prog,data:new Date().toLocaleString()}]);
       setReport(out);
       setAlertas(out.alertas||[]);
       setModalProgressPct(100);
@@ -284,14 +271,16 @@ export default function TelaInicial() {
       setTimeout(()=>{
         setShowCompareModal(false);
         setModalPhotoFile(null);
-        setModalPhotoPreview(null);
+        setModalPhotoPreview(null)
         setModalProgressPct(0);
       },600);
     }
   };
 
+  // === Gráfico progresso ===
   const PainelProgresso = () => {
     if(!progressoObra.length) return null;
+
     const data = {
       labels:progressoObra.map(p=>p.data),
       datasets:[{
@@ -301,6 +290,7 @@ export default function TelaInicial() {
         backgroundColor:"rgba(0,80,214,.25)"
       }]
     };
+
     return (
       <div style={{marginTop:25}}>
         <h3>Histórico de Progresso</h3>
@@ -309,11 +299,11 @@ export default function TelaInicial() {
     );
   };
 
+  // === Relatório agora só progresso + classes BIM ===
   const RelatorioComparacao = () => {
-    if(!report) return null;
+    if (!report) return null;
 
-    const s = Number(report.similaridade_atual||0).toFixed(1);
-    const p = Number(report.progresso_global||s).toFixed(1);
+    const p = Number(report.progresso_global ?? report.progresso ?? 0).toFixed(1);
     const linhas = Object.entries(report.detalhePorClasse||{}).map(([cls,det])=>({...det,cls}));
 
     return (
@@ -321,8 +311,10 @@ export default function TelaInicial() {
         <h3>Resultado da Comparação</h3>
 
         <div className="dashboard-cards">
-          <div className="dash-card"><h4>Similaridade</h4><p>{s}%</p></div>
-          <div className="dash-card"><h4>Progresso Global</h4><p>{p}%</p></div>
+          <div className="dash-card">
+            <h4>Progresso Global</h4>
+            <p>{p}%</p>
+          </div>
         </div>
 
         <div className="report success">
@@ -354,8 +346,11 @@ export default function TelaInicial() {
     );
   };
 
+  // === UI ===
   return (
 <div className="tela-container">
+
+  {/* Barra topo */}
   <div className="top-bar">
     <div className="status-container">
       {status==="não iniciada" && <MdNotStarted className="status-icon not-started"/>}
@@ -375,7 +370,8 @@ export default function TelaInicial() {
     </div>
   </div>
 
-  <div className={`sidebar ${sidebarOpen ? "open" : ""}`}>
+  {/* Sidebar histórico */}
+  <div className={`sidebar ${sidebarOpen?"open":""}`}>
     <h3>Histórico</h3>
     {historico.map((h,i)=>(
       <div key={i} className="history-item"
@@ -388,11 +384,13 @@ export default function TelaInicial() {
           <p>{h.nome}</p>
           <small>{h.data}</small>
         </div>
-        <MdDelete style={{cursor:"pointer",color:"#c00"}} onClick={(e)=>{e.stopPropagation();handleDeleteFile(h.nome);}}/>
+        <MdDelete style={{cursor:"pointer",color:"#c00"}}
+          onClick={(e)=>{ e.stopPropagation(); handleDeleteFile(h.nome); }}/>
       </div>
     ))}
   </div>
 
+  {/* Conteúdo */}
   <div className="content">
     <div className="content-inner">
 
@@ -400,7 +398,7 @@ export default function TelaInicial() {
         <FaFileUpload className="upload-icon"/>
         <p>Selecionar BIM (.ifc / .ifc.gz)</p>
       </label>
-      <input id="bim-upload" type="file" accept=".ifc,.ifc.gz,.gz" style={{display:"none"}} onChange={handleBimChange} />
+      <input id="bim-upload" type="file" accept=".ifc,.ifc.gz,.gz" style={{display:"none"}} onChange={handleBimChange}/>
 
       {bimEntry && (
         <div className="report success" style={{marginTop:16}}>
@@ -411,7 +409,8 @@ export default function TelaInicial() {
 
           <button onClick={prepararSnapshot} className="capture-btn">Comparar</button>
 
-          <textarea value={resultTextBox} readOnly placeholder="Resultado..." style={{width:"100%",minHeight:100,marginTop:10,padding:10,borderRadius:8,background:"#fff",color:"#000",border:"1px solid #ccc"}}/>
+          <textarea value={resultTextBox} readOnly placeholder="Resultado..."
+            style={{width:"100%",minHeight:100,marginTop:10,padding:10,borderRadius:8,border:"1px solid #ccc"}}/>
         </div>
       )}
 
@@ -421,6 +420,7 @@ export default function TelaInicial() {
     </div>
   </div>
 
+  {/* Modal comparação */}
   {showCompareModal && (
     <div className="modal-backdrop">
       <div className="modal-content">
@@ -442,12 +442,14 @@ export default function TelaInicial() {
               <FaFileUpload className="upload-icon"/>
               <span>Escolher foto</span>
             </label>
-            <input id="modal-photo-upload" type="file" accept=".jpg,.jpeg,.png,.webp" style={{display:"none"}} onChange={(e)=>{
-              const f=e.target.files?.[0];
-              if(!f) return;
-              setModalPhotoFile(f);
-              setModalPhotoPreview(URL.createObjectURL(f));
-            }}/>
+            <input id="modal-photo-upload" type="file" accept=".jpg,.jpeg,.png,.webp" style={{display:"none"}}
+              onChange={(e)=>{
+                const f=e.target.files?.[0];
+                if(!f) return;
+                setModalPhotoFile(f);
+                setModalPhotoPreview(URL.createObjectURL(f));
+              }}/>
+
             {modalPhotoPreview && <img src={modalPhotoPreview} className="compare-img" alt="foto"/>}
           </div>
         </div>
