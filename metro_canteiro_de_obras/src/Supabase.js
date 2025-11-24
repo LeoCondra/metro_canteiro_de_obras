@@ -6,4 +6,4 @@ export const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiO
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 export const BUCKET = "canteiro de obras";
-export const ANALYZE_URL = "https://aedludqrnwntsqgyjjla.functions.supabase.co/-rapid-analyze"; // <-- ajuste para a rota do seu backend
+export const ANALYZE_URL = "https://aedludqrnwntsqgyjjla.functions.supabase.co/-rapid-analyze"; 

@@ -40,11 +40,9 @@ export default function TelaInicial() {
 
   const [resultTextBox, setResultTextBox] = useState("");
 
-  // guarda a última combinação usada
   const [lastSnapshotImg, setLastSnapshotImg] = useState(null);
   const [lastPhotoImg, setLastPhotoImg] = useState(null);
 
-  // modal novo “ver imagens usadas”
   const [showImagesModal, setShowImagesModal] = useState(false);
 
   const location = useLocation();
@@ -91,7 +89,6 @@ export default function TelaInicial() {
 
   useEffect(() => {
     carregarHistorico();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // === UPLOAD IFC ===
@@ -116,7 +113,7 @@ export default function TelaInicial() {
         .getPublicUrl(`arquivos/${username}/${fname}`);
 
       setBimEntry({ nome: fname, url: url.publicUrl });
-      setViewingHistoryItem(null); // volta pro modelo atual
+      setViewingHistoryItem(null); 
       setSnapshotImg(null);
       setStatus("concluída");
 
@@ -127,7 +124,7 @@ export default function TelaInicial() {
     }
   };
 
-  // === ENVIAR COMPARAÇÃO ===
+  // === ENVIAR COMPARAÇÃO ==
   const enviarComparacaoModal = async () => {
     if (!snapshotImg) return alert("Capture primeiro");
     if (!modalPhotoFile) return alert("Selecione uma foto");
@@ -159,7 +156,7 @@ export default function TelaInicial() {
 
       const prog = parseFloat(out.progresso_global ?? 0);
 
-      // guarda as imagens usadas
+      
       setLastSnapshotImg(snapshotImg);
 
       if (modalPhotoPreview) {
