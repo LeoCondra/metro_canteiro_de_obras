@@ -28,7 +28,7 @@ import { supabase, BUCKET, ANALYZE_URL, SUPABASE_ANON_KEY } from "./Supabase";
 import "./TelaInicial.css";
 
 
-// === SOBEL SAFE: SEM ERROS ===
+// === SOBEL SAFE ===
 function sobelEdge(webglCanvas) {
   try {
     if (!webglCanvas) return null;
@@ -46,8 +46,8 @@ function sobelEdge(webglCanvas) {
     const sobelData = sobel(imgData);
 
     if (!sobelData || !sobelData.toImageData) {
-      console.warn("Sobel falhou → usando imagem sem bordas");
-      return temp; // fallback seguro
+      console.warn("Sobel falhou → usando imagem normal");
+      return temp;
     }
 
     const edgeCanvas = document.createElement("canvas");
@@ -93,6 +93,13 @@ export default function TelaInicial() {
   const [modalProgressPct, setModalProgressPct] = useState(0);
 
   const [resultTextBox, setResultTextBox] = useState("");
+
+  // guarda a última combinação usada
+  const [lastSnapshotImg, setLastSnapshotImg] = useState(null);
+  const [lastPhotoImg, setLastPhotoImg] = useState(null);
+
+  // modal novo “ver imagens usadas”
+  const [showImagesModal, setShowImagesModal] = useState(false);
 
   const viewerRef = useRef(null);
   const rendererRef = useRef(null);
@@ -174,7 +181,7 @@ export default function TelaInicial() {
       setBimEntry({ nome: fname, url: url.publicUrl });
       setStatus("concluída");
 
-      setTimeout(carregarHistorico, 500);
+      setTimeout(carregarHistorico, 600);
 
     } catch {
       setStatus("falhou");
@@ -307,6 +314,7 @@ export default function TelaInicial() {
   }, [bimEntry?.url, viewingHistoryItem?.url]);
 
 
+
   // === SNAPSHOT ===
   const prepararSnapshot = () => {
     const canvas = rendererRef.current?.domElement;
@@ -328,6 +336,7 @@ export default function TelaInicial() {
 
     return new File([u8], filename, { type: mime });
   }
+
 
 
   // === ENVIAR COMPARAÇÃO ===
@@ -364,8 +373,17 @@ export default function TelaInicial() {
 
       const prog = parseFloat(out.progresso_global ?? 0);
 
+      // guarda as imagens usadas
+      setLastSnapshotImg(snapshotImg);
+
+      if (modalPhotoPreview) {
+        setLastPhotoImg(modalPhotoPreview);
+      } else if (modalPhotoFile) {
+        setLastPhotoImg(URL.createObjectURL(modalPhotoFile));
+      }
+
       setResultTextBox(
-        `Progresso Global: ${(isNaN(prog) ? 0 : prog).toFixed(1)}%\n${out.textoFaltas || ""}`
+        `Progresso: ${(isNaN(prog) ? 0 : prog).toFixed(1)}%\n${out.textoFaltas || ""}`
       );
 
       setProgressoObra(prev => [
@@ -424,6 +442,7 @@ export default function TelaInicial() {
   };
 
 
+
   // === RELATÓRIO ===
   const RelatorioComparacao = () => {
     if (!report) return null;
@@ -439,7 +458,7 @@ export default function TelaInicial() {
 
         <div className="dashboard-cards">
           <div className="dash-card">
-            <h4>Progresso Global</h4>
+            <h4>Progresso</h4>
             <p>{p}%</p>
           </div>
         </div>
@@ -486,12 +505,11 @@ export default function TelaInicial() {
 
 
 
-
   // === UI PRINCIPAL ===
   return (
     <div className="tela-container">
 
-      {/* ===== TOP BAR ===== */}
+      {/* TOP BAR */}
       <div className="top-bar">
         <div className="status-container">
           {status === "não iniciada" && <MdNotStarted className="status-icon not-started" />}
@@ -514,7 +532,7 @@ export default function TelaInicial() {
 
 
 
-      {/* ===== SIDEBAR ===== */}
+      {/* SIDEBAR */}
       <div className={`sidebar ${sidebarOpen ? "open" : ""}`}>
         <h3>Histórico</h3>
 
@@ -546,7 +564,7 @@ export default function TelaInicial() {
 
 
 
-      {/* ===== CONTEÚDO CENTRAL ===== */}
+      {/* CONTEÚDO CENTRAL */}
       <div className="content">
         <div className="content-inner">
 
@@ -577,9 +595,19 @@ export default function TelaInicial() {
 
               <div ref={viewerRef} className="ifc-viewer-container" />
 
-              <button className="capture-btn" onClick={prepararSnapshot}>
-                Comparar
-              </button>
+              <div className="compare-actions">
+                <button className="capture-btn" onClick={prepararSnapshot}>
+                  Comparar
+                </button>
+
+                <button
+                  className="capture-btn"
+                  disabled={!lastSnapshotImg || !lastPhotoImg}
+                  onClick={() => setShowImagesModal(true)}
+                >
+                  Ver imagens usadas
+                </button>
+              </div>
 
               <textarea
                 readOnly
@@ -605,7 +633,7 @@ export default function TelaInicial() {
 
 
 
-      {/* ===== MODAL ===== */}
+      {/* MODAL DE COMPARAÇÃO */}
       {showCompareModal && (
         <div className="modal-backdrop">
           <div className="modal-content">
@@ -678,6 +706,34 @@ export default function TelaInicial() {
         </div>
       )}
 
+
+
+      {/* MODAL NOVO – VER IMAGENS USADAS */}
+      {showImagesModal && lastSnapshotImg && lastPhotoImg && (
+        <div className="modal-backdrop">
+          <div className="modal-content">
+            <h3>Imagens usadas na última comparação</h3>
+
+            <div className="compare-grid">
+              <div className="compare-box">
+                <p>Snapshot BIM</p>
+                <img src={lastSnapshotImg} className="compare-img" alt="Snapshot BIM" />
+              </div>
+
+              <div className="compare-box">
+                <p>Foto da obra</p>
+                <img src={lastPhotoImg} className="compare-img" alt="Foto da obra" />
+              </div>
+            </div>
+
+            <div className="modal-actions">
+              <button onClick={() => setShowImagesModal(false)}>
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
