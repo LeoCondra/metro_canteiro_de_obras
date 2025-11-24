@@ -13,7 +13,7 @@ Um aplicativo para acompanhar e gerenciar atividades de uma construção civil.
 ##  Como rodar o projeto
 
 1. Abra um terminal **bash**
-2. Entre no repositório do projeto
+2. Entre no repositório do projeto:
   `cd metro_canteiro_de_obras`
 3. Instale as dependências:
    `npm install`
